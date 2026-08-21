@@ -46,6 +46,7 @@ const durationLabel = (minutes: number | null) => minutes ? `${Math.floor(minute
 const usefulTags = (tags: string[]) => tags.filter((tag) => !["DEFAULT", "pmr", "GRETA", "hearing-impaired"].includes(tag));
 const isVost = (session: Session) => session.version?.toUpperCase() === "VOST";
 const filterFilms = (films: Film[], vostOnly: boolean) => vostOnly ? films.filter((film) => film.sessions.some(isVost)) : films;
+const filterSessions = (film: Film, vostOnly: boolean) => vostOnly ? film.sessions.filter(isVost) : film.sessions;
 
 export default function Home() {
   const [schedule, setSchedule] = useState<Schedule | null>(null);
@@ -53,7 +54,7 @@ export default function Home() {
   const [cinemaSlug, setCinemaSlug] = useState("cinema-pathe-alesia");
   const [date, setDate] = useState("");
   const [filmSlug, setFilmSlug] = useState("");
-  const [vostOnly, setVostOnly] = useState(false);
+  const [vostOnly, setVostOnly] = useState(true);
   const [checked, setChecked] = useState(false);
   const [seatMap, setSeatMap] = useState<{ url: string; time: string } | null>(null);
   const resultsRef = useRef<HTMLElement>(null);
@@ -71,7 +72,7 @@ export default function Home() {
         setSchedule(data);
         setCinemaSlug(cinema.slug);
         setDate(initialDate);
-        setFilmSlug(cinema.days[initialDate]?.[0]?.slug ?? "");
+        setFilmSlug(filterFilms(cinema.days[initialDate] ?? [], true)[0]?.slug ?? "");
       })
       .catch(() => setLoadError(true));
   }, []);
@@ -79,7 +80,7 @@ export default function Home() {
   const cinema = useMemo(() => schedule?.cinemas.find((item) => item.slug === cinemaSlug) ?? null, [schedule, cinemaSlug]);
   const films = filterFilms(cinema?.days[date] ?? [], vostOnly);
   const film = films.find((item) => item.slug === filmSlug) ?? films[0] ?? null;
-  const sessions = film ? (vostOnly ? film.sessions.filter(isVost) : film.sessions) : [];
+  const sessions = film ? filterSessions(film, vostOnly) : [];
 
   function changeCinema(slug: string) {
     const nextCinema = schedule?.cinemas.find((item) => item.slug === slug);
@@ -98,8 +99,24 @@ export default function Home() {
 
   function showSessions() {
     if (!film) return;
+    const onlySession = sessions.length === 1 ? sessions[0] : null;
+    const showMap = onlySession?.status === "available" && onlySession.bookingUrl;
     setChecked(true);
-    window.setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
+    setSeatMap(showMap ? { url: showMap, time: onlySession.time } : null);
+    window.setTimeout(() => (showMap ? seatMapRef : resultsRef).current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  }
+
+  function selectFilm(slug: string) {
+    const selectedFilm = films.find((item) => item.slug === slug);
+    const selectedSessions = selectedFilm ? filterSessions(selectedFilm, vostOnly) : [];
+    const onlySession = selectedSessions.length === 1 ? selectedSessions[0] : null;
+    const showMap = onlySession?.status === "available" && onlySession.bookingUrl;
+    setFilmSlug(slug);
+    setChecked(Boolean(onlySession));
+    setSeatMap(showMap ? { url: showMap, time: onlySession.time } : null);
+    if (onlySession) {
+      window.setTimeout(() => (showMap ? seatMapRef : resultsRef).current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    }
   }
 
   function toggleVost() {
@@ -152,7 +169,7 @@ export default function Home() {
               </label>
               <label>
                 <span>3 · Film · {films.length} {vostOnly ? "en VOST" : "au programme"}</span>
-                <select value={film?.slug ?? ""} onChange={(event) => { setFilmSlug(event.target.value); setChecked(false); setSeatMap(null); }} disabled={!films.length}>
+                <select value={film?.slug ?? ""} onChange={(event) => selectFilm(event.target.value)} disabled={!films.length}>
                   {films.length ? films.map((item) => <option key={item.slug} value={item.slug}>{item.title}</option>) : <option>{vostOnly ? "Aucun film en VOST ce jour" : "Aucun film ce jour"}</option>}
                 </select>
               </label>
