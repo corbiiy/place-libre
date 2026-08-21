@@ -1,186 +1,197 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-const cinemas = [
-  { name: "Pathé BNP Paribas", district: "Paris 2e" },
-  { name: "Pathé Palace", district: "Paris 9e" },
-  { name: "Pathé Les Fauvettes", district: "Paris 13e" },
-  { name: "Pathé Alésia", district: "Paris 14e" },
-  { name: "Pathé Parnasse", district: "Paris 14e" },
-  { name: "Pathé Montparnos", district: "Paris 14e" },
-  { name: "Pathé Aquaboulevard", district: "Paris 15e" },
-  { name: "Pathé Convention", district: "Paris 15e" },
-  { name: "Pathé Beaugrenelle", district: "Paris 15e" },
-  { name: "Les 7 Batignolles", district: "Paris 17e" },
-  { name: "Pathé Wepler", district: "Paris 18e" },
-  { name: "Pathé La Villette", district: "Paris 19e" },
-  { name: "La Géode", district: "Paris 19e" },
-];
+type Session = {
+  time: string;
+  endTime: string | null;
+  version: string | null;
+  tags: string[];
+  status: string;
+  bookingUrl: string | null;
+  auditorium: string | null;
+  capacity: number | null;
+};
 
-const filmPool = [
-  { title: "Projet Dernière Chance", meta: "2h 46 · Science-fiction" },
-  { title: "Super Mario Galaxy", meta: "1h 42 · Animation" },
-  { title: "Le Diable s’habille en Prada 2", meta: "2h 05 · Comédie" },
-  { title: "Compostelle", meta: "1h 48 · Drame" },
-  { title: "The Drama", meta: "1h 55 · Drame" },
-  { title: "La Bataille de Gaulle", meta: "2h 21 · Historique" },
-  { title: "Derrière les palmiers", meta: "1h 37 · Drame" },
-  { title: "L’Inconnue", meta: "1h 51 · Thriller" },
-  { title: "Tosca — Opéra de Paris", meta: "3h 05 · Opéra" },
-];
+type Film = {
+  slug: string;
+  title: string;
+  duration: number | null;
+  genres: string[];
+  poster: string | null;
+  contentRating: string | null;
+  sessions: Session[];
+};
 
-const dayMs = 86_400_000;
-// Keep the first server render identical to the browser render.
-const today = new Date("2026-08-22T12:00:00+02:00");
-const isoDate = (date: Date) => date.toISOString().slice(0, 10);
-const availableDates = Array.from({ length: 7 }, (_, index) => {
-  const date = new Date(today.getTime() + index * dayMs);
-  return {
-    value: isoDate(date),
-    short: index === 0 ? "Aujourd’hui" : index === 1 ? "Demain" : new Intl.DateTimeFormat("fr-FR", { weekday: "short" }).format(date).replace(".", ""),
-    day: new Intl.DateTimeFormat("fr-FR", { day: "2-digit" }).format(date),
-    month: new Intl.DateTimeFormat("fr-FR", { month: "short" }).format(date).replace(".", ""),
-  };
-});
+type Cinema = {
+  slug: string;
+  name: string;
+  district: string;
+  pageUrl: string;
+  days: Record<string, Film[]>;
+};
 
-function hash(value: string) {
-  return [...value].reduce((total, character) => (total * 31 + character.charCodeAt(0)) >>> 0, 7);
-}
+type Schedule = {
+  syncedAt: string;
+  source: string;
+  dates: string[];
+  cinemas: Cinema[];
+};
 
-function filmsFor(cinema: string, date: string) {
-  const seed = hash(`${cinema}-${date}`);
-  return Array.from({ length: 5 }, (_, index) => filmPool[(seed + index * 2) % filmPool.length]);
-}
+const dateLabel = (date: string, style: "long" | "short" = "long") => new Intl.DateTimeFormat("fr-FR", style === "long"
+  ? { weekday: "long", day: "numeric", month: "long" }
+  : { weekday: "short", day: "2-digit", month: "short" }).format(new Date(`${date}T12:00:00`));
 
-function showtimesFor(cinema: string, date: string, film: string) {
-  const variants = [
-    ["11:15", "14:20", "17:35", "20:45"],
-    ["10:40", "13:50", "18:10", "21:25"],
-    ["12:05", "15:15", "19:30", "22:20"],
-  ];
-  return variants[hash(`${cinema}-${date}-${film}`) % variants.length];
-}
+const durationLabel = (minutes: number | null) => minutes ? `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}` : null;
+const usefulTags = (tags: string[]) => tags.filter((tag) => !["DEFAULT", "pmr", "GRETA", "hearing-impaired"].includes(tag));
 
 export default function Home() {
-  const [cinema, setCinema] = useState(cinemas[0].name);
-  const [date, setDate] = useState(availableDates[0].value);
-  const availableFilms = useMemo(() => filmsFor(cinema, date), [cinema, date]);
-  const [film, setFilm] = useState(() => filmsFor(cinemas[0].name, availableDates[0].value)[0].title);
-  const times = useMemo(() => showtimesFor(cinema, date, film), [cinema, date, film]);
-  const [time, setTime] = useState(times[0]);
+  const [schedule, setSchedule] = useState<Schedule | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [cinemaSlug, setCinemaSlug] = useState("cinema-pathe-alesia");
+  const [date, setDate] = useState("");
+  const [filmSlug, setFilmSlug] = useState("");
   const [checked, setChecked] = useState(false);
-  const [checking, setChecking] = useState(false);
   const resultsRef = useRef<HTMLElement>(null);
-  const activeFilm = availableFilms.find((item) => item.title === film) ?? availableFilms[0];
-  const resultSeed = hash(`${cinema}-${date}-${film}-${time}`);
-  const totalSeats = 124;
-  const freeSeats = 22 + (resultSeed % 79);
 
-  function resetFor(cinemaValue: string, dateValue: string) {
-    const nextFilm = filmsFor(cinemaValue, dateValue)[0].title;
-    setFilm(nextFilm);
-    setTime(showtimesFor(cinemaValue, dateValue, nextFilm)[0]);
+  useEffect(() => {
+    fetch("/pathe-schedule.json")
+      .then((response) => {
+        if (!response.ok) throw new Error("Programme indisponible");
+        return response.json();
+      })
+      .then((data: Schedule) => {
+        const cinema = data.cinemas.find((item) => item.slug === "cinema-pathe-alesia") ?? data.cinemas[0];
+        const initialDate = data.dates[0];
+        setSchedule(data);
+        setCinemaSlug(cinema.slug);
+        setDate(initialDate);
+        setFilmSlug(cinema.days[initialDate]?.[0]?.slug ?? "");
+      })
+      .catch(() => setLoadError(true));
+  }, []);
+
+  const cinema = useMemo(() => schedule?.cinemas.find((item) => item.slug === cinemaSlug) ?? null, [schedule, cinemaSlug]);
+  const films = cinema?.days[date] ?? [];
+  const film = films.find((item) => item.slug === filmSlug) ?? films[0] ?? null;
+
+  function changeCinema(slug: string) {
+    const nextCinema = schedule?.cinemas.find((item) => item.slug === slug);
+    setCinemaSlug(slug);
+    setFilmSlug(nextCinema?.days[date]?.[0]?.slug ?? "");
     setChecked(false);
   }
 
-  function chooseCinema(value: string) {
-    setCinema(value);
-    resetFor(value, date);
-  }
-
-  function chooseDate(value: string) {
-    setDate(value);
-    resetFor(cinema, value);
-  }
-
-  function chooseFilm(value: string) {
-    setFilm(value);
-    setTime(showtimesFor(cinema, date, value)[0]);
+  function changeDate(nextDate: string) {
+    setDate(nextDate);
+    setFilmSlug(cinema?.days[nextDate]?.[0]?.slug ?? "");
     setChecked(false);
   }
 
-  function checkAvailability() {
-    setChecking(true);
-    setChecked(false);
-    window.setTimeout(() => {
-      setChecking(false);
-      setChecked(true);
-      window.setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
-    }, 450);
+  function showSessions() {
+    if (!film) return;
+    setChecked(true);
+    window.setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
   }
+
+  const sourcePage = cinema && date ? `${cinema.pageUrl}/filters/date-${date}` : "https://www.pathe.fr/cinemas/ville/paris";
 
   return (
     <main>
       <header className="topbar">
         <a className="brand" href="#top" aria-label="Place Libre — accueil"><span className="brand-mark">PL</span><span>PLACE LIBRE</span></a>
-        <span className="live-pill"><i /> aperçu démo</span>
+        <span className="live-pill verified"><i /> données Pathé</span>
       </header>
 
       <section className="hero" id="top">
-        <div className="eyebrow"><span>01</span> Trouvez votre séance</div>
-        <h1>Le bon film.<br />La bonne place.</h1>
-        <p className="lede">Choisissez d’abord votre cinéma et votre date. Nous vous montrons ensuite uniquement les films programmés ce jour-là.</p>
+        <div className="eyebrow"><span>01</span> Programme officiel</div>
+        <h1>Le bon film.<br />La vraie séance.</h1>
+        <p className="lede">Choisissez un cinéma parisien et une date. Les films et horaires ci-dessous viennent directement du programme Pathé.</p>
 
-        <div className="finder" aria-label="Recherche de séance">
-          <label>
-            <span>1 · Cinéma à Paris</span>
-            <select value={cinema} onChange={(event) => chooseCinema(event.target.value)}>
-              {cinemas.map((item) => <option key={item.name} value={item.name}>{item.name} — {item.district}</option>)}
-            </select>
-          </label>
-          <label>
-            <span>2 · Date</span>
-            <select value={date} onChange={(event) => chooseDate(event.target.value)}>
-              {availableDates.map((item) => <option key={item.value} value={item.value}>{item.short} · {item.day} {item.month}</option>)}
-            </select>
-          </label>
-          <label>
-            <span>3 · Film</span>
-            <select value={film} onChange={(event) => chooseFilm(event.target.value)}>
-              {availableFilms.map((item) => <option key={item.title} value={item.title}>{item.title}</option>)}
-            </select>
-          </label>
-          <button onClick={checkAvailability} disabled={checking}>{checking ? "Vérification…" : "Voir les places"} <span>{checking ? "" : "→"}</span></button>
-        </div>
+        {loadError ? (
+          <div className="load-message error">Le programme Pathé n’a pas pu être chargé. <button onClick={() => window.location.reload()}>Réessayer</button></div>
+        ) : !schedule ? (
+          <div className="load-message"><span className="spinner" /> Chargement du programme Pathé…</div>
+        ) : (
+          <>
+            <div className="finder" aria-label="Recherche de séance">
+              <label>
+                <span>1 · Cinéma à Paris</span>
+                <select value={cinemaSlug} onChange={(event) => changeCinema(event.target.value)}>
+                  {schedule.cinemas.map((item) => <option key={item.slug} value={item.slug}>{item.name} — {item.district}</option>)}
+                </select>
+              </label>
+              <label>
+                <span>2 · Date</span>
+                <select value={date} onChange={(event) => changeDate(event.target.value)}>
+                  {schedule.dates.map((item) => <option key={item} value={item}>{dateLabel(item)}</option>)}
+                </select>
+              </label>
+              <label>
+                <span>3 · Film · {films.length} au programme</span>
+                <select value={film?.slug ?? ""} onChange={(event) => { setFilmSlug(event.target.value); setChecked(false); }} disabled={!films.length}>
+                  {films.length ? films.map((item) => <option key={item.slug} value={item.slug}>{item.title}</option>) : <option>Aucun film ce jour</option>}
+                </select>
+              </label>
+              <button onClick={showSessions} disabled={!film}>Voir les séances <span>→</span></button>
+            </div>
 
-        <div className="date-strip" aria-label="Dates disponibles">
-          {availableDates.map((item) => (
-            <button key={item.value} className={date === item.value ? "active" : ""} onClick={() => chooseDate(item.value)}>
-              <small>{item.short}</small><strong>{item.day}</strong><span>{item.month}</span>
-            </button>
-          ))}
-        </div>
+            <div className="date-strip" aria-label="Dates disponibles">
+              {schedule.dates.map((item, index) => (
+                <button key={item} className={date === item ? "active" : ""} onClick={() => changeDate(item)}>
+                  <small>{index === 0 ? "Aujourd’hui" : index === 1 ? "Demain" : dateLabel(item, "short").split(" ")[0]}</small>
+                  <strong>{item.slice(8, 10)}</strong>
+                  <span>{dateLabel(item, "short").split(" ").at(-1)}</span>
+                </button>
+              ))}
+            </div>
+            <p className="sync-note">Synchronisé avec Pathé le {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Paris" }).format(new Date(schedule.syncedAt))}</p>
+          </>
+        )}
       </section>
 
-      {checked && (
+      {checked && cinema && film && (
         <section className="results is-visible" aria-live="polite" ref={resultsRef}>
-          <div className="result-heading">
-            <div><div className="eyebrow"><span>02</span> Disponibilités</div><h2>{activeFilm.title}</h2><p>{activeFilm.meta} · {cinema} · {new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long" }).format(new Date(`${date}T12:00:00`))}</p></div>
-            <div className="availability"><strong>{freeSeats}</strong><span>places libres<br />sur {totalSeats}</span></div>
+          <div className="result-heading official-heading">
+            <div>
+              <div className="eyebrow"><span>02</span> Séances Pathé</div>
+              <h2>{film.title}</h2>
+              <p>{[durationLabel(film.duration), film.genres.join(", "), film.contentRating, cinema.name, dateLabel(date)].filter(Boolean).join(" · ")}</p>
+            </div>
+            <a className="source-link" href={sourcePage} target="_blank" rel="noreferrer">Voir la source Pathé ↗</a>
           </div>
 
-          <div className="time-row" role="group" aria-label="Choisir une séance">
-            {times.map((item, index) => {
-              const count = 14 + ((resultSeed + index * 19) % 90);
-              return <button key={item} className={time === item ? "active" : ""} onClick={() => setTime(item)}><span>{item}</span><small>{count} places</small></button>;
-            })}
-          </div>
+          {film.sessions.length ? (
+            <div className="session-grid">
+              {film.sessions.map((session, index) => {
+                const tags = usefulTags(session.tags);
+                const available = session.status === "available" && session.bookingUrl;
+                return (
+                  <article className="session-card" key={`${session.time}-${index}`}>
+                    <div className="session-time"><strong>{session.time}</strong>{session.endTime && <span>fin {session.endTime}</span>}</div>
+                    <div className="session-meta">
+                      <span>{session.version}</span>
+                      {tags.map((tag) => <span key={tag}>{tag.toUpperCase()}</span>)}
+                      {session.auditorium && <span>Salle {session.auditorium}</span>}
+                    </div>
+                    <div className={`booking-status ${available ? "available" : "unavailable"}`}><i />{available ? "Réservation ouverte" : "Indisponible"}</div>
+                    {available ? <a href={session.bookingUrl!} target="_blank" rel="noreferrer">Choisir mes places <span>↗</span></a> : <span className="disabled-booking">Réservation fermée</span>}
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="no-sessions">
+              <h3>Séances visibles sur Pathé</h3>
+              <p>Pathé référence ce film ce jour-là, mais ne fournit pas ses horaires via son flux de séances.</p>
+              <a href={sourcePage} target="_blank" rel="noreferrer">Consulter le programme officiel ↗</a>
+            </div>
+          )}
 
-          <div className="seat-card">
-            <div className="seat-copy">
-              <span className="room">SALLE {1 + (resultSeed % 8)} · {time}</span>
-              <h3>{freeSeats > 65 ? <>Encore de très<br />bonnes places.</> : freeSeats > 35 ? <>La salle se<br />remplit vite.</> : <>Plus que quelques<br />places.</>}</h3>
-              <p>{freeSeats > 50 ? "Les sièges centraux des rangs E à G sont encore largement disponibles." : "Les meilleures places partent vite : vérifiez le plan officiel avant de réserver."}</p>
-              <div className="legend"><span><i className="free" /> Libre</span><span><i className="taken" /> Occupé</span></div>
-              <a href="https://www.pathe.fr/cinemas/ville/paris" target="_blank" rel="noreferrer">Continuer sur Pathé <span>↗</span></a>
-            </div>
-            <div className="seat-map" aria-label="Plan de salle simplifié">
-              <div className="screen">ÉCRAN</div>
-              {[0,1,2,3,4,5,6].map((row) => <div className="seat-row" key={row}><b>{String.fromCharCode(65 + row)}</b>{Array.from({ length: 10 }, (_, seat) => { const taken = (resultSeed + row * 7 + seat * 3) % 13 < 5; return <i key={seat} className={taken ? "taken" : "free"} title={`${String.fromCharCode(65 + row)}${seat + 1} — ${taken ? "occupé" : "libre"}`} />; })}</div>)}
-            </div>
+          <div className="truth-note">
+            <strong>À propos des places</strong>
+            <p>Pathé publie le statut de réservation, mais pas le nombre exact de fauteuils libres. « Choisir mes places » ouvre le plan de salle officiel Pathé pour vérifier les sièges réellement disponibles.</p>
           </div>
-          <p className="demo-note">Simulation interactive — les disponibilités en temps réel doivent être confirmées sur Pathé avant réservation.</p>
         </section>
       )}
     </main>
