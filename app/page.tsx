@@ -158,24 +158,31 @@ export default function Home() {
               <h2>{film.title}</h2>
               <p>{[durationLabel(film.duration), film.genres.join(", "), film.contentRating, cinema.name, dateLabel(date)].filter(Boolean).join(" · ")}</p>
             </div>
-            <a className="source-link" href={sourcePage} target="_blank" rel="noreferrer">Voir la source Pathé ↗</a>
+            <div className="heading-actions">
+              <div className="availability-summary"><strong>{film.sessions.filter((session) => session.status === "available").length}</strong><span>séance{film.sessions.filter((session) => session.status === "available").length > 1 ? "s" : ""} avec<br />des places</span></div>
+              <a className="source-link" href={sourcePage} target="_blank" rel="noreferrer">Voir la source Pathé ↗</a>
+            </div>
           </div>
 
           {film.sessions.length ? (
             <div className="session-grid">
               {film.sessions.map((session, index) => {
                 const tags = usefulTags(session.tags);
-                const available = session.status === "available" && session.bookingUrl;
+                const hasSeats = session.status === "available";
+                const available = hasSeats && session.bookingUrl;
                 return (
-                  <article className="session-card" key={`${session.time}-${index}`}>
+                  <article className={`session-card ${hasSeats ? "has-seats" : "sold-out"}`} key={`${session.time}-${index}`}>
                     <div className="session-time"><strong>{session.time}</strong>{session.endTime && <span>fin {session.endTime}</span>}</div>
                     <div className="session-meta">
                       <span>{session.version}</span>
                       {tags.map((tag) => <span key={tag}>{tag.toUpperCase()}</span>)}
                       {session.auditorium && <span>Salle {session.auditorium}</span>}
                     </div>
-                    <div className={`booking-status ${available ? "available" : "unavailable"}`}><i />{available ? "Réservation ouverte" : "Indisponible"}</div>
-                    {available ? <a href={session.bookingUrl!} target="_blank" rel="noreferrer">Choisir mes places <span>↗</span></a> : <span className="disabled-booking">Réservation fermée</span>}
+                    <div className={`seat-answer ${hasSeats ? "yes" : "no"}`}>
+                      <strong>{hasSeats ? "OUI" : "COMPLET"}</strong>
+                      <span>{hasSeats ? "Des places sont disponibles" : "Aucune place disponible"}</span>
+                    </div>
+                    {available ? <a href={session.bookingUrl!} target="_blank" rel="noreferrer">Voir les sièges en direct <span>↗</span></a> : <span className="disabled-booking">Séance complète</span>}
                   </article>
                 );
               })}
@@ -190,7 +197,7 @@ export default function Home() {
 
           <div className="truth-note">
             <strong>À propos des places</strong>
-            <p>Pathé publie le statut de réservation, mais pas le nombre exact de fauteuils libres. « Choisir mes places » ouvre le plan de salle officiel Pathé pour vérifier les sièges réellement disponibles.</p>
+            <p>« OUI » et « COMPLET » viennent du statut officiel de la séance Pathé. Pathé ne publie pas le nombre exact de fauteuils restants ; « Voir les sièges en direct » ouvre son plan de salle pour choisir les places précises.</p>
           </div>
         </section>
       )}

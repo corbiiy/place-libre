@@ -72,9 +72,14 @@ h1 { font-size: clamp(64px, 9vw, 132px); max-width: 1050px; letter-spacing: -.07
 .seat-row i.free { box-shadow: inset 0 -4px 0 #d5c200; }
 .demo-note { color: #77736b; font-size: 11px; text-align: center; margin: 26px 0 0; }
 .official-heading { align-items: center; }
+.heading-actions { display: flex; align-items: center; gap: 22px; }
+.availability-summary { display: flex; align-items: center; gap: 10px; }
+.availability-summary strong { font-size: 46px; color: var(--yellow); letter-spacing: -.06em; }
+.availability-summary span { color: #aaa79f; font-size: 11px; line-height: 1.3; }
 .source-link { flex: 0 0 auto; color: var(--ink); background: var(--yellow); padding: 15px 19px; text-decoration: none; font-weight: 850; font-size: 13px; }
 .session-grid { margin-top: 46px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-.session-card { min-height: 250px; background: #f5f2ea; color: var(--ink); padding: 24px; display: flex; flex-direction: column; border-top: 5px solid var(--yellow); }
+.session-card { min-height: 290px; background: #f5f2ea; color: var(--ink); padding: 24px; display: flex; flex-direction: column; border-top: 5px solid var(--yellow); }
+.session-card.sold-out { border-top-color: #d8533d; }
 .session-time { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
 .session-time strong { font-size: 38px; letter-spacing: -.055em; }
 .session-time span { color: #7a756d; font-size: 11px; }
@@ -86,6 +91,11 @@ h1 { font-size: clamp(64px, 9vw, 132px); max-width: 1050px; letter-spacing: -.07
 .booking-status.available i { background: #20a760; }
 .booking-status.unavailable { color: #9d3424; }
 .booking-status.unavailable i { background: #d8533d; }
+.seat-answer { margin-top: auto; padding: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.seat-answer.yes { background: #dff3e7; color: #116a3b; }
+.seat-answer.no { background: #f3ded9; color: #9d3424; }
+.seat-answer strong { font-size: 27px; letter-spacing: -.04em; }
+.seat-answer span { max-width: 105px; font-size: 10px; font-weight: 750; line-height: 1.25; text-align: right; }
 .session-card > a, .disabled-booking { margin-top: 16px; min-height: 45px; padding: 13px 14px; display: flex; justify-content: space-between; align-items: center; text-decoration: none; font-weight: 850; font-size: 12px; }
 .session-card > a { background: var(--ink); color: white; }
 .session-card > a:hover { background: #34342f; }
@@ -98,4 +108,4 @@ h1 { font-size: clamp(64px, 9vw, 132px); max-width: 1050px; letter-spacing: -.07
 .no-sessions p { color: #69645b; }
 .no-sessions a { display: inline-block; margin-top: 14px; background: var(--ink); color: white; text-decoration: none; padding: 14px 17px; font-weight: 800; font-size: 13px; }
 @media (max-width: 850px) { .hero { padding-top: 54px; } .finder { grid-template-columns: 1fr 1fr; } .finder label:nth-child(2) { border-right: 0; } .finder label:nth-child(-n+2) { border-bottom: 1px solid var(--line); } .finder button { min-height: 70px; } .date-strip { max-width: none; } .result-heading { align-items: flex-start; } .session-grid { grid-template-columns: 1fr 1fr; } .seat-card { grid-template-columns: 1fr; } .seat-copy { border-right: 0; border-bottom: 1px solid var(--line); } }
-@media (max-width: 560px) { .topbar { height: 68px; } .hero { min-height: auto; padding-bottom: 44px; } h1 { font-size: 58px; } .finder { grid-template-columns: 1fr; box-shadow: 5px 5px 0 var(--ink); } .finder label { border-right: 0; border-bottom: 1px solid var(--line); } .finder button { min-height: 62px; } .date-strip { display: flex; overflow-x: auto; scrollbar-width: none; } .date-strip::-webkit-scrollbar { display: none; } .date-strip button { flex: 0 0 76px; } .results { padding-top: 58px; } .result-heading { display: block; } .source-link { display: inline-block; margin-top: 24px; } .session-grid { grid-template-columns: 1fr; margin-top: 30px; } .truth-note { grid-template-columns: 1fr; gap: 10px; } .availability { margin-top: 24px; } .time-row { grid-template-columns: 1fr 1fr; } .time-row button:nth-child(2) { border-right: 0; } .time-row button:nth-child(-n+2) { border-bottom: 1px solid #474740; } .seat-copy { padding: 34px 26px; } .seat-map { padding: 46px 18px 32px; } }
+@media (max-width: 560px) { .topbar { height: 68px; } .hero { min-height: auto; padding-bottom: 44px; } h1 { font-size: 58px; } .finder { grid-template-columns: 1fr; box-shadow: 5px 5px 0 var(--ink); } .finder label { border-right: 0; border-bottom: 1px solid var(--line); } .finder button { min-height: 62px; } .date-strip { display: flex; overflow-x: auto; scrollbar-width: none; } .date-strip::-webkit-scrollbar { display: none; } .date-strip button { flex: 0 0 76px; } .results { padding-top: 58px; } .result-heading { display: block; } .heading-actions { margin-top: 22px; align-items: flex-end; justify-content: space-between; } .source-link { display: inline-block; } .session-grid { grid-template-columns: 1fr; margin-top: 30px; } .truth-note { grid-template-columns: 1fr; gap: 10px; } .availability { margin-top: 24px; } .time-row { grid-template-columns: 1fr 1fr; } .time-row button:nth-child(2) { border-right: 0; } .time-row button:nth-child(-n+2) { border-bottom: 1px solid #474740; } .seat-copy { padding: 34px 26px; } .seat-map { padding: 46px 18px 32px; } }
