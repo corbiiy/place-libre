@@ -24,6 +24,16 @@ h1 { font-size: clamp(64px, 9vw, 132px); max-width: 1050px; letter-spacing: -.07
 .finder button span { margin-left: 12px; }
 .finder button:hover { background: #ffef62; }
 .finder button:disabled { cursor: wait; background: #ded9cb; color: #747068; }
+.format-filter { margin-top: 20px; display: flex; align-items: center; gap: 14px; }
+.format-filter > button { min-height: 54px; display: flex; align-items: center; gap: 11px; border: 1px solid var(--ink); background: white; color: var(--ink); padding: 8px 16px 8px 10px; cursor: pointer; text-align: left; }
+.format-filter > button:hover { background: #fffdeb; }
+.format-filter > button.active { background: var(--ink); color: white; }
+.filter-check { width: 32px; height: 32px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid currentColor; background: var(--paper); color: var(--ink); font-weight: 900; }
+.format-filter > button.active .filter-check { background: var(--yellow); border-color: var(--yellow); }
+.format-filter strong, .format-filter small { display: block; }
+.format-filter strong { font-size: 12px; }
+.format-filter small { margin-top: 2px; font-size: 9px; opacity: .65; }
+.filter-result { font-size: 11px; color: #68645c; font-weight: 750; }
 .load-message { margin-top: 54px; min-height: 86px; display: flex; align-items: center; gap: 14px; padding: 24px; border: 1px solid var(--ink); background: white; font-weight: 750; }
 .load-message.error { border-color: #c8422b; color: #9f2b1a; }
 .load-message button { border: 0; border-bottom: 1px solid currentColor; color: inherit; background: transparent; font-weight: 850; cursor: pointer; padding: 2px 0; }

@@ -44,6 +44,8 @@ const dateLabel = (date: string, style: "long" | "short" = "long") => new Intl.D
 
 const durationLabel = (minutes: number | null) => minutes ? `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}` : null;
 const usefulTags = (tags: string[]) => tags.filter((tag) => !["DEFAULT", "pmr", "GRETA", "hearing-impaired"].includes(tag));
+const isVost = (session: Session) => session.version?.toUpperCase() === "VOST";
+const filterFilms = (films: Film[], vostOnly: boolean) => vostOnly ? films.filter((film) => film.sessions.some(isVost)) : films;
 
 export default function Home() {
   const [schedule, setSchedule] = useState<Schedule | null>(null);
@@ -51,6 +53,7 @@ export default function Home() {
   const [cinemaSlug, setCinemaSlug] = useState("cinema-pathe-alesia");
   const [date, setDate] = useState("");
   const [filmSlug, setFilmSlug] = useState("");
+  const [vostOnly, setVostOnly] = useState(false);
   const [checked, setChecked] = useState(false);
   const [seatMap, setSeatMap] = useState<{ url: string; time: string } | null>(null);
   const resultsRef = useRef<HTMLElement>(null);
@@ -74,20 +77,21 @@ export default function Home() {
   }, []);
 
   const cinema = useMemo(() => schedule?.cinemas.find((item) => item.slug === cinemaSlug) ?? null, [schedule, cinemaSlug]);
-  const films = cinema?.days[date] ?? [];
+  const films = filterFilms(cinema?.days[date] ?? [], vostOnly);
   const film = films.find((item) => item.slug === filmSlug) ?? films[0] ?? null;
+  const sessions = film ? (vostOnly ? film.sessions.filter(isVost) : film.sessions) : [];
 
   function changeCinema(slug: string) {
     const nextCinema = schedule?.cinemas.find((item) => item.slug === slug);
     setCinemaSlug(slug);
-    setFilmSlug(nextCinema?.days[date]?.[0]?.slug ?? "");
+    setFilmSlug(filterFilms(nextCinema?.days[date] ?? [], vostOnly)[0]?.slug ?? "");
     setChecked(false);
     setSeatMap(null);
   }
 
   function changeDate(nextDate: string) {
     setDate(nextDate);
-    setFilmSlug(cinema?.days[nextDate]?.[0]?.slug ?? "");
+    setFilmSlug(filterFilms(cinema?.days[nextDate] ?? [], vostOnly)[0]?.slug ?? "");
     setChecked(false);
     setSeatMap(null);
   }
@@ -96,6 +100,16 @@ export default function Home() {
     if (!film) return;
     setChecked(true);
     window.setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
+  }
+
+  function toggleVost() {
+    const nextVostOnly = !vostOnly;
+    const nextFilms = filterFilms(cinema?.days[date] ?? [], nextVostOnly);
+    const currentStillAvailable = nextFilms.some((item) => item.slug === filmSlug);
+    setVostOnly(nextVostOnly);
+    setFilmSlug(currentStillAvailable ? filmSlug : (nextFilms[0]?.slug ?? ""));
+    setChecked(false);
+    setSeatMap(null);
   }
 
   function openSeatMap(url: string, time: string) {
@@ -137,12 +151,20 @@ export default function Home() {
                 </select>
               </label>
               <label>
-                <span>3 · Film · {films.length} au programme</span>
+                <span>3 · Film · {films.length} {vostOnly ? "en VOST" : "au programme"}</span>
                 <select value={film?.slug ?? ""} onChange={(event) => { setFilmSlug(event.target.value); setChecked(false); setSeatMap(null); }} disabled={!films.length}>
-                  {films.length ? films.map((item) => <option key={item.slug} value={item.slug}>{item.title}</option>) : <option>Aucun film ce jour</option>}
+                  {films.length ? films.map((item) => <option key={item.slug} value={item.slug}>{item.title}</option>) : <option>{vostOnly ? "Aucun film en VOST ce jour" : "Aucun film ce jour"}</option>}
                 </select>
               </label>
               <button onClick={showSessions} disabled={!film}>Voir les séances <span>→</span></button>
+            </div>
+
+            <div className="format-filter">
+              <button className={vostOnly ? "active" : ""} onClick={toggleVost} aria-pressed={vostOnly}>
+                <span className="filter-check" aria-hidden="true">{vostOnly ? "✓" : ""}</span>
+                <span><strong>VOST uniquement</strong><small>Version originale sous-titrée</small></span>
+              </button>
+              {vostOnly && <span className="filter-result">{films.length} film{films.length !== 1 ? "s" : ""} disponible{films.length !== 1 ? "s" : ""}</span>}
             </div>
 
             <div className="date-strip" aria-label="Dates disponibles">
@@ -168,14 +190,14 @@ export default function Home() {
               <p>{[durationLabel(film.duration), film.genres.join(", "), film.contentRating, cinema.name, dateLabel(date)].filter(Boolean).join(" · ")}</p>
             </div>
             <div className="heading-actions">
-              <div className="availability-summary"><strong>{film.sessions.filter((session) => session.status === "available").length}</strong><span>séance{film.sessions.filter((session) => session.status === "available").length > 1 ? "s" : ""} avec<br />des places</span></div>
+              <div className="availability-summary"><strong>{sessions.filter((session) => session.status === "available").length}</strong><span>séance{sessions.filter((session) => session.status === "available").length > 1 ? "s" : ""} avec<br />des places</span></div>
               <a className="source-link" href={sourcePage} target="_blank" rel="noreferrer">Voir la source Pathé ↗</a>
             </div>
           </div>
 
-          {film.sessions.length ? (
+          {sessions.length ? (
             <div className="session-grid">
-              {film.sessions.map((session, index) => {
+              {sessions.map((session, index) => {
                 const tags = usefulTags(session.tags);
                 const hasSeats = session.status === "available";
                 const available = hasSeats && session.bookingUrl;
