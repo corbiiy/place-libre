@@ -52,7 +52,9 @@ export default function Home() {
   const [date, setDate] = useState("");
   const [filmSlug, setFilmSlug] = useState("");
   const [checked, setChecked] = useState(false);
+  const [seatMap, setSeatMap] = useState<{ url: string; time: string } | null>(null);
   const resultsRef = useRef<HTMLElement>(null);
+  const seatMapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch("/pathe-schedule.json")
@@ -80,18 +82,25 @@ export default function Home() {
     setCinemaSlug(slug);
     setFilmSlug(nextCinema?.days[date]?.[0]?.slug ?? "");
     setChecked(false);
+    setSeatMap(null);
   }
 
   function changeDate(nextDate: string) {
     setDate(nextDate);
     setFilmSlug(cinema?.days[nextDate]?.[0]?.slug ?? "");
     setChecked(false);
+    setSeatMap(null);
   }
 
   function showSessions() {
     if (!film) return;
     setChecked(true);
     window.setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
+  }
+
+  function openSeatMap(url: string, time: string) {
+    setSeatMap({ url, time });
+    window.setTimeout(() => seatMapRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   }
 
   const sourcePage = cinema && date ? `${cinema.pageUrl}/filters/date-${date}` : "https://www.pathe.fr/cinemas/ville/paris";
@@ -129,7 +138,7 @@ export default function Home() {
               </label>
               <label>
                 <span>3 · Film · {films.length} au programme</span>
-                <select value={film?.slug ?? ""} onChange={(event) => { setFilmSlug(event.target.value); setChecked(false); }} disabled={!films.length}>
+                <select value={film?.slug ?? ""} onChange={(event) => { setFilmSlug(event.target.value); setChecked(false); setSeatMap(null); }} disabled={!films.length}>
                   {films.length ? films.map((item) => <option key={item.slug} value={item.slug}>{item.title}</option>) : <option>Aucun film ce jour</option>}
                 </select>
               </label>
@@ -182,7 +191,7 @@ export default function Home() {
                       <strong>{hasSeats ? "OUI" : "COMPLET"}</strong>
                       <span>{hasSeats ? "Des places sont disponibles" : "Aucune place disponible"}</span>
                     </div>
-                    {available ? <a href={session.bookingUrl!} target="_blank" rel="noreferrer">Voir les sièges en direct <span>↗</span></a> : <span className="disabled-booking">Séance complète</span>}
+                    {available ? <button className="seat-map-button" onClick={() => openSeatMap(session.bookingUrl!, session.time)}>Afficher le plan des sièges <span>↓</span></button> : <span className="disabled-booking">Séance complète</span>}
                   </article>
                 );
               })}
@@ -195,9 +204,22 @@ export default function Home() {
             </div>
           )}
 
+          {seatMap && (
+            <div className="embedded-seat-map" ref={seatMapRef}>
+              <div className="map-toolbar">
+                <div><span>PLAN OFFICIEL PATHÉ</span><strong>{film.title} · {seatMap.time}</strong></div>
+                <div className="map-actions">
+                  <a href={seatMap.url} target="_blank" rel="noreferrer">Ouvrir sur Pathé ↗</a>
+                  <button onClick={() => setSeatMap(null)} aria-label="Fermer le plan des sièges">Fermer ×</button>
+                </div>
+              </div>
+              <iframe src={seatMap.url} title={`Plan des sièges Pathé pour ${film.title} à ${seatMap.time}`} />
+            </div>
+          )}
+
           <div className="truth-note">
             <strong>À propos des places</strong>
-            <p>« OUI » et « COMPLET » viennent du statut officiel de la séance Pathé. Pathé ne publie pas le nombre exact de fauteuils restants ; « Voir les sièges en direct » ouvre son plan de salle pour choisir les places précises.</p>
+            <p>« OUI » et « COMPLET » viennent du statut officiel de la séance Pathé. Le plan intégré est chargé directement depuis la réservation Pathé : ses sièges libres et occupés restent donc à jour.</p>
           </div>
         </section>
       )}
