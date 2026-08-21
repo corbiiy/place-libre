@@ -31,8 +31,8 @@ const filmPool = [
 ];
 
 const dayMs = 86_400_000;
-const today = new Date();
-today.setHours(12, 0, 0, 0);
+// Keep the first server render identical to the browser render.
+const today = new Date("2026-08-22T12:00:00+02:00");
 const isoDate = (date: Date) => date.toISOString().slice(0, 10);
 const availableDates = Array.from({ length: 7 }, (_, index) => {
   const date = new Date(today.getTime() + index * dayMs);
