@@ -37,10 +37,11 @@ test("server-renders the Place Libre loading state", async () => {
 });
 
 test("uses live date-specific Pathé data with a saved fallback", async () => {
-  const [page, route, api] = await Promise.all([
+  const [page, route, api, cinemas] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/pathe-api.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/cinemas.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /fetch\(`\/api\/pathe\?\$\{params\}`\)/);
@@ -51,4 +52,8 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(route, /getParisCinemas\(\)/);
   assert.match(api, /pendingRequests/);
   assert.match(api, /responseCache/);
+  assert.match(cinemas, /cinema-pathe-aquaboulevard/);
+  assert.match(cinemas, /cinema-la-geode/);
+  assert.match(cinemas, /cinema-pathe-montparnos/);
+  assert.match(api, /!isExcludedCinema\(cinema\.slug\)/);
 });

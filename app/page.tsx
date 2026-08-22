@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { isExcludedCinema } from "../lib/cinemas";
 
 type Session = {
   time: string;
@@ -70,6 +71,9 @@ const filterFilms = (films: Film[], vostOnly: boolean) => vostOnly ? films.filte
 const filterSessions = (film: Film, vostOnly: boolean) => vostOnly ? film.sessions.filter(isVost) : film.sessions;
 const monthLabel = (month: string) => new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric" }).format(new Date(`${month}-01T12:00:00`));
 const programmeCache = new Map<string, { expiresAt: number; data: LiveProgramme }>();
+const filterUpcomingCinemas = (movies: UpcomingMovie[]) => movies
+  .map((movie) => ({ ...movie, cinemas: movie.cinemas.filter((cinema) => !isExcludedCinema(cinema.slug)) }))
+  .filter((movie) => movie.cinemas.length > 0);
 
 async function loadProgramme(slug: string, requestedDate?: string) {
   const key = `${slug}:${requestedDate ?? "default"}`;
@@ -174,7 +178,7 @@ export default function Home() {
         syncedAt: data.syncedAt,
         source: "https://www.pathe.fr/",
         dates: data.dates,
-        cinemas: data.cinemas.map((cinema) => ({ ...cinema, days: {} })),
+        cinemas: data.cinemas.filter((cinema) => !isExcludedCinema(cinema.slug)).map((cinema) => ({ ...cinema, days: {} })),
       });
       setCinemaSlug(slug);
       setProgrammeDates(data.dates);
@@ -191,17 +195,18 @@ export default function Home() {
           const response = await fetch("/pathe-schedule.json");
           if (!response.ok) throw new Error("Programme indisponible");
           const data: Schedule = await response.json();
-          const fallbackCinema = data.cinemas.find((item) => item.slug === slug) ?? data.cinemas[0];
+          const filteredSchedule = { ...data, cinemas: data.cinemas.filter((cinema) => !isExcludedCinema(cinema.slug)) };
+          const fallbackCinema = filteredSchedule.cinemas.find((item) => item.slug === slug) ?? filteredSchedule.cinemas[0];
           const fallbackDate = requestedDate && fallbackCinema.days[requestedDate] ? requestedDate : data.dates[0];
           const fallbackFilms = fallbackCinema.days[fallbackDate] ?? [];
-          setSchedule(data);
+          setSchedule(filteredSchedule);
           setCinemaSlug(fallbackCinema.slug);
           setDate(fallbackDate);
           setProgrammeDates(data.dates);
           setDayFilms(fallbackFilms);
           setSyncedAt(data.syncedAt);
           setFilmSlug(filterFilms(fallbackFilms, vostOnlyRef.current)[0]?.slug ?? "");
-          const fallbackUpcoming = upcomingFromSchedule(data);
+          const fallbackUpcoming = upcomingFromSchedule(filteredSchedule);
           setUpcomingMovies((current) => current.length ? current : fallbackUpcoming);
           setUpcomingMonth((current) => current || fallbackUpcoming[0]?.firstDate.slice(0, 7) || "");
           setRefreshError(true);
@@ -225,8 +230,9 @@ export default function Home() {
         return response.json();
       })
       .then((data: { movies: UpcomingMovie[] }) => {
-        setUpcomingMovies(data.movies);
-        setUpcomingMonth((current) => current || data.movies[0]?.firstDate.slice(0, 7) || "");
+        const movies = filterUpcomingCinemas(data.movies);
+        setUpcomingMovies(movies);
+        setUpcomingMonth((current) => current || movies[0]?.firstDate.slice(0, 7) || "");
       })
       .catch(() => setUpcomingError(true))
       .finally(() => setUpcomingLoading(false));

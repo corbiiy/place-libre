@@ -1,3 +1,5 @@
+import { isExcludedCinema } from "../../../lib/cinemas";
+
 export type PatheCinema = {
   slug: string;
   name: string;
@@ -38,6 +40,6 @@ export async function getPatheJson<T = unknown>(path: string, ttlMs = 300_000): 
 export async function getParisCinemas() {
   const allCinemas = await getPatheJson<PatheCinema[]>("/cinemas", 3_600_000);
   return allCinemas
-    .filter((cinema) => cinema.theaters?.some((theater) => theater.addressCity === "Paris"))
+    .filter((cinema) => cinema.theaters?.some((theater) => theater.addressCity === "Paris") && !isExcludedCinema(cinema.slug))
     .sort((a, b) => (a.theaters?.[0]?.addressZip ?? "").localeCompare(b.theaters?.[0]?.addressZip ?? "") || a.name.localeCompare(b.name));
 }

@@ -1,4 +1,5 @@
 import { getParisCinemas, getPatheJson } from "./pathe-api";
+import { isExcludedCinema } from "../../../lib/cinemas";
 
 type PatheShow = {
   slug: string;
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
   const cinemaSlug = url.searchParams.get("cinema") ?? "";
   const requestedDate = url.searchParams.get("date");
 
-  if (!/^cinema-[a-z0-9-]+$/.test(cinemaSlug) || (requestedDate && !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate))) {
+  if (!/^cinema-[a-z0-9-]+$/.test(cinemaSlug) || isExcludedCinema(cinemaSlug) || (requestedDate && !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate))) {
     return Response.json({ error: "Paramètres invalides" }, { status: 400 });
   }
 
