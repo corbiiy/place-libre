@@ -1,8 +1,4 @@
-type PatheCinema = {
-  slug: string;
-  name: string;
-  theaters?: Array<{ addressCity?: string; addressZip?: string }>;
-};
+import { getParisCinemas, getPatheJson } from "../pathe-api";
 
 type PatheShow = {
   slug: string;
@@ -13,40 +9,43 @@ type PatheShow = {
   contentRating?: { description?: string };
 };
 
-const API = "https://www.pathe.fr/api";
-const patheHeaders = {
-  Accept: "application/json",
-  "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
-  Referer: "https://www.pathe.fr/",
-  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36",
+type PatheProgramme = {
+  shows?: Record<string, { days?: Record<string, unknown> }>;
 };
 
-async function getJson(path: string) {
-  const response = await fetch(`${API}${path}`, { headers: patheHeaders });
-  if (!response.ok) throw new Error(`Pathé ${response.status}`);
-  return response.json();
-}
+type AggregatedMovie = {
+  slug: string;
+  title: string;
+  duration: number | null;
+  genres: string[];
+  poster: string | null;
+  contentRating: string | null;
+  firstDate: string;
+  lastDate: string;
+  cinemas: Array<{ slug: string; name: string; district: string; dates: string[] }>;
+};
 
 export async function GET() {
   try {
-    const [allCinemas, cataloguePayload] = await Promise.all([getJson("/cinemas"), getJson("/shows")]);
-    const cinemas: PatheCinema[] = allCinemas
-      .filter((cinema: PatheCinema) => cinema.theaters?.some((theater) => theater.addressCity === "Paris"))
-      .sort((a: PatheCinema, b: PatheCinema) => (a.theaters?.[0]?.addressZip ?? "").localeCompare(b.theaters?.[0]?.addressZip ?? "") || a.name.localeCompare(b.name));
+    const [cinemas, cataloguePayload] = await Promise.all([
+      getParisCinemas(),
+      getPatheJson<{ shows?: PatheShow[] } | PatheShow[]>("/shows", 3_600_000),
+    ]);
     const programmes = await Promise.all(cinemas.map(async (cinema) => {
       try {
-        return await getJson(`/cinema/${encodeURIComponent(cinema.slug)}/shows`);
+        return await getPatheJson<PatheProgramme>(`/cinema/${encodeURIComponent(cinema.slug)}/shows`, 300_000);
       } catch {
         return { shows: {} };
       }
     }));
-    const catalogue = new Map<string, PatheShow>((cataloguePayload.shows ?? cataloguePayload).map((show: PatheShow) => [show.slug, show]));
+    const catalogueShows = Array.isArray(cataloguePayload) ? cataloguePayload : cataloguePayload.shows ?? [];
+    const catalogue = new Map<string, PatheShow>(catalogueShows.map((show) => [show.slug, show]));
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(new Date());
-    const movies = new Map<string, any>();
+    const movies = new Map<string, AggregatedMovie>();
 
     programmes.forEach((programme, cinemaIndex) => {
       const cinema = cinemas[cinemaIndex];
-      Object.entries(programme.shows ?? {}).forEach(([slug, entry]: [string, any]) => {
+      Object.entries(programme.shows ?? {}).forEach(([slug, entry]) => {
         const dates = Object.keys(entry.days ?? {}).filter((date) => date >= today).sort();
         if (!dates.length) return;
         const show = catalogue.get(slug) ?? { slug, title: slug.replaceAll("-", " ") };

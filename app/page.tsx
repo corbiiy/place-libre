@@ -43,6 +43,7 @@ type LiveProgramme = {
   dates: string[];
   date: string;
   films: Film[];
+  cinemas: Array<Omit<Cinema, "days">>;
 };
 
 type UpcomingCinema = {
@@ -68,6 +69,23 @@ const isVost = (session: Session) => session.version?.toUpperCase() === "VOST";
 const filterFilms = (films: Film[], vostOnly: boolean) => vostOnly ? films.filter((film) => film.sessions.some(isVost)) : films;
 const filterSessions = (film: Film, vostOnly: boolean) => vostOnly ? film.sessions.filter(isVost) : film.sessions;
 const monthLabel = (month: string) => new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric" }).format(new Date(`${month}-01T12:00:00`));
+const programmeCache = new Map<string, { expiresAt: number; data: LiveProgramme }>();
+
+async function loadProgramme(slug: string, requestedDate?: string) {
+  const key = `${slug}:${requestedDate ?? "default"}`;
+  const cached = programmeCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+
+  const params = new URLSearchParams({ cinema: slug });
+  if (requestedDate) params.set("date", requestedDate);
+  const response = await fetch(`/api/pathe?${params}`);
+  if (!response.ok) throw new Error("Programme indisponible");
+  const data: LiveProgramme = await response.json();
+  const cachedProgramme = { expiresAt: Date.now() + 60_000, data };
+  programmeCache.set(key, cachedProgramme);
+  programmeCache.set(`${slug}:${data.date}`, cachedProgramme);
+  return data;
+}
 
 function upcomingFromSchedule(schedule: Schedule): UpcomingMovie[] {
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(new Date());
@@ -132,32 +150,76 @@ export default function Home() {
   const upcomingDetailRef = useRef<HTMLDivElement>(null);
   const upcomingMapRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0);
+  const upcomingRequestIdRef = useRef(0);
   const vostOnlyRef = useRef(true);
 
-  useEffect(() => {
-    fetch("/pathe-schedule.json")
-      .then((response) => {
-        if (!response.ok) throw new Error("Programme indisponible");
-        return response.json();
-      })
-      .then((data: Schedule) => {
-        const cinema = data.cinemas.find((item) => item.slug === "cinema-pathe-alesia") ?? data.cinemas[0];
-        const initialDate = data.dates[0];
-        setSchedule(data);
-        setCinemaSlug(cinema.slug);
-        setDate(initialDate);
-        setProgrammeDates(data.dates);
-        setDayFilms(cinema.days[initialDate] ?? []);
-        setSyncedAt(data.syncedAt);
-        setFilmSlug(filterFilms(cinema.days[initialDate] ?? [], true)[0]?.slug ?? "");
-        const fallbackUpcoming = upcomingFromSchedule(data);
-        setUpcomingMovies(fallbackUpcoming);
-        setUpcomingMonth(fallbackUpcoming[0]?.firstDate.slice(0, 7) ?? "");
-        void refreshProgramme(cinema.slug);
-      })
-      .catch(() => setLoadError(true));
+  const cinema = useMemo(() => schedule?.cinemas.find((item) => item.slug === cinemaSlug) ?? null, [schedule, cinemaSlug]);
+  const films = filterFilms(dayFilms, vostOnly);
+  const film = films.find((item) => item.slug === filmSlug) ?? films[0] ?? null;
+  const sessions = film ? filterSessions(film, vostOnly) : [];
+  const upcomingMonths = useMemo(() => [...new Set(upcomingMovies.flatMap((movie) => movie.cinemas.flatMap((cinema) => cinema.dates.map((day) => day.slice(0, 7)))))].sort(), [upcomingMovies]);
+  const visibleUpcomingMovies = useMemo(() => upcomingMovies.filter((movie) => movie.cinemas.some((cinema) => cinema.dates.some((day) => day.startsWith(upcomingMonth)))), [upcomingMovies, upcomingMonth]);
+  const upcomingMovie = upcomingMovies.find((movie) => movie.slug === upcomingMovieSlug) ?? null;
+  const upcomingCinema = upcomingMovie?.cinemas.find((cinema) => cinema.slug === upcomingCinemaSlug) ?? null;
 
-    fetch("/api/pathe/upcoming", { cache: "no-store" })
+  async function refreshProgramme(slug: string, requestedDate?: string, initial = false) {
+    const requestId = ++requestIdRef.current;
+    setRefreshing(true);
+    setRefreshError(false);
+    try {
+      const data = await loadProgramme(slug, requestedDate);
+      if (requestId !== requestIdRef.current) return;
+      const visibleFilms = filterFilms(data.films, vostOnlyRef.current);
+      setSchedule((current) => current ?? {
+        syncedAt: data.syncedAt,
+        source: "https://www.pathe.fr/",
+        dates: data.dates,
+        cinemas: data.cinemas.map((cinema) => ({ ...cinema, days: {} })),
+      });
+      setCinemaSlug(slug);
+      setProgrammeDates(data.dates);
+      setDate(data.date);
+      setDayFilms(data.films);
+      setSyncedAt(data.syncedAt);
+      setFilmSlug(visibleFilms[0]?.slug ?? "");
+      setChecked(false);
+      setSeatMap(null);
+    } catch {
+      if (requestId !== requestIdRef.current) return;
+      if (initial) {
+        try {
+          const response = await fetch("/pathe-schedule.json");
+          if (!response.ok) throw new Error("Programme indisponible");
+          const data: Schedule = await response.json();
+          const fallbackCinema = data.cinemas.find((item) => item.slug === slug) ?? data.cinemas[0];
+          const fallbackDate = requestedDate && fallbackCinema.days[requestedDate] ? requestedDate : data.dates[0];
+          const fallbackFilms = fallbackCinema.days[fallbackDate] ?? [];
+          setSchedule(data);
+          setCinemaSlug(fallbackCinema.slug);
+          setDate(fallbackDate);
+          setProgrammeDates(data.dates);
+          setDayFilms(fallbackFilms);
+          setSyncedAt(data.syncedAt);
+          setFilmSlug(filterFilms(fallbackFilms, vostOnlyRef.current)[0]?.slug ?? "");
+          const fallbackUpcoming = upcomingFromSchedule(data);
+          setUpcomingMovies((current) => current.length ? current : fallbackUpcoming);
+          setUpcomingMonth((current) => current || fallbackUpcoming[0]?.firstDate.slice(0, 7) || "");
+          setRefreshError(true);
+        } catch {
+          setLoadError(true);
+        }
+      } else {
+        setRefreshError(true);
+      }
+    } finally {
+      if (requestId === requestIdRef.current) setRefreshing(false);
+    }
+  }
+
+  useEffect(() => {
+    void Promise.resolve().then(() => refreshProgramme("cinema-pathe-alesia", undefined, true));
+
+    fetch("/api/pathe/upcoming")
       .then((response) => {
         if (!response.ok) throw new Error("Films à venir indisponibles");
         return response.json();
@@ -169,41 +231,6 @@ export default function Home() {
       .catch(() => setUpcomingError(true))
       .finally(() => setUpcomingLoading(false));
   }, []);
-
-  const cinema = useMemo(() => schedule?.cinemas.find((item) => item.slug === cinemaSlug) ?? null, [schedule, cinemaSlug]);
-  const films = filterFilms(dayFilms, vostOnly);
-  const film = films.find((item) => item.slug === filmSlug) ?? films[0] ?? null;
-  const sessions = film ? filterSessions(film, vostOnly) : [];
-  const upcomingMonths = useMemo(() => [...new Set(upcomingMovies.flatMap((movie) => movie.cinemas.flatMap((cinema) => cinema.dates.map((day) => day.slice(0, 7)))))].sort(), [upcomingMovies]);
-  const visibleUpcomingMovies = useMemo(() => upcomingMovies.filter((movie) => movie.cinemas.some((cinema) => cinema.dates.some((day) => day.startsWith(upcomingMonth)))), [upcomingMovies, upcomingMonth]);
-  const upcomingMovie = upcomingMovies.find((movie) => movie.slug === upcomingMovieSlug) ?? null;
-  const upcomingCinema = upcomingMovie?.cinemas.find((cinema) => cinema.slug === upcomingCinemaSlug) ?? null;
-
-  async function refreshProgramme(slug: string, requestedDate?: string) {
-    const requestId = ++requestIdRef.current;
-    setRefreshing(true);
-    setRefreshError(false);
-    try {
-      const params = new URLSearchParams({ cinema: slug });
-      if (requestedDate) params.set("date", requestedDate);
-      const response = await fetch(`/api/pathe?${params}`, { cache: "no-store" });
-      if (!response.ok) throw new Error("Programme indisponible");
-      const data: LiveProgramme = await response.json();
-      if (requestId !== requestIdRef.current) return;
-      const visibleFilms = filterFilms(data.films, vostOnlyRef.current);
-      setProgrammeDates(data.dates);
-      setDate(data.date);
-      setDayFilms(data.films);
-      setSyncedAt(data.syncedAt);
-      setFilmSlug(visibleFilms[0]?.slug ?? "");
-      setChecked(false);
-      setSeatMap(null);
-    } catch {
-      if (requestId === requestIdRef.current) setRefreshError(true);
-    } finally {
-      if (requestId === requestIdRef.current) setRefreshing(false);
-    }
-  }
 
   function changeCinema(slug: string) {
     const nextCinema = schedule?.cinemas.find((item) => item.slug === slug);
@@ -268,6 +295,7 @@ export default function Home() {
   }
 
   function changeUpcomingMonth(month: string) {
+    upcomingRequestIdRef.current += 1;
     setUpcomingMonth(month);
     setUpcomingMovieSlug("");
     setUpcomingCinemaSlug("");
@@ -277,6 +305,7 @@ export default function Home() {
   }
 
   function selectUpcomingMovie(slug: string) {
+    upcomingRequestIdRef.current += 1;
     setUpcomingMovieSlug(slug);
     setUpcomingCinemaSlug("");
     setUpcomingDate("");
@@ -286,6 +315,7 @@ export default function Home() {
   }
 
   function selectUpcomingCinema(slug: string) {
+    upcomingRequestIdRef.current += 1;
     setUpcomingCinemaSlug(slug);
     setUpcomingDate("");
     setUpcomingFilm(null);
@@ -294,14 +324,14 @@ export default function Home() {
 
   async function selectUpcomingDate(day: string) {
     if (!upcomingMovie || !upcomingCinema) return;
+    const requestId = ++upcomingRequestIdRef.current;
     setUpcomingDate(day);
     setUpcomingChecking(true);
     setUpcomingFilm(null);
     setUpcomingSeatMap(null);
     try {
-      const response = await fetch(`/api/pathe?${new URLSearchParams({ cinema: upcomingCinema.slug, date: day })}`, { cache: "no-store" });
-      if (!response.ok) throw new Error("Séances indisponibles");
-      const data: LiveProgramme = await response.json();
+      const data = await loadProgramme(upcomingCinema.slug, day);
+      if (requestId !== upcomingRequestIdRef.current) return;
       const selectedFilm = data.films.find((item) => item.slug === upcomingMovie.slug) ?? null;
       setUpcomingFilm(selectedFilm);
       const onlySession = selectedFilm?.sessions.length === 1 ? selectedFilm.sessions[0] : null;
@@ -309,11 +339,12 @@ export default function Home() {
       setUpcomingSeatMap(showMap ? { url: showMap, time: onlySession.time } : null);
       window.setTimeout(() => (showMap ? upcomingMapRef : upcomingDetailRef).current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     } catch {
+      if (requestId !== upcomingRequestIdRef.current) return;
       const fallbackCinema = schedule?.cinemas.find((item) => item.slug === upcomingCinema.slug);
       setUpcomingFilm(fallbackCinema?.days[day]?.find((item) => item.slug === upcomingMovie.slug) ?? null);
       setUpcomingError(true);
     } finally {
-      setUpcomingChecking(false);
+      if (requestId === upcomingRequestIdRef.current) setUpcomingChecking(false);
     }
   }
 
