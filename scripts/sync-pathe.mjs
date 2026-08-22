@@ -8,42 +8,53 @@ const headers = {
   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
 };
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
 async function getJson(path) {
   const response = await fetch(`${API}${path}`, { headers });
   if (!response.ok) throw new Error(`Pathé ${response.status}: ${path}`);
   return response.json();
 }
 
-const isoDate = (date) => date.toISOString().slice(0, 10);
 const now = new Date();
-const parisToday = new Date(`${new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(now)}T12:00:00+02:00`);
-const dates = Array.from({ length: 7 }, (_, index) => isoDate(new Date(parisToday.getTime() + index * 86_400_000)));
+const parisToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(now);
+
+async function mapLimit(items, limit, mapper) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await mapper(items[index], index);
+    }
+  }));
+  return results;
+}
 
 const [allCinemas, cataloguePayload] = await Promise.all([getJson("/cinemas"), getJson("/shows")]);
 const catalogue = new Map((cataloguePayload.shows ?? cataloguePayload).map((show) => [show.slug, show]));
 const parisCinemas = allCinemas
   .filter((cinema) => cinema.theaters?.some((theater) => theater.addressCity === "Paris"))
   .sort((a, b) => a.theaters[0].addressZip.localeCompare(b.theaters[0].addressZip) || a.name.localeCompare(b.name));
+const programmes = await Promise.all(parisCinemas.map((cinema) => getJson(`/cinema/${cinema.slug}/shows`)));
+const dates = [...new Set(programmes.flatMap((programme) => Object.values(programme.shows ?? {}).flatMap((entry) => Object.keys(entry.days ?? {}))))]
+  .filter((date) => date >= parisToday)
+  .sort();
 
 const cinemas = [];
-for (const cinema of parisCinemas) {
-  const programme = await getJson(`/cinema/${cinema.slug}/shows`);
+for (const [cinemaIndex, cinema] of parisCinemas.entries()) {
+  const programme = programmes[cinemaIndex];
   const selectedSlugs = Object.entries(programme.shows ?? {})
-    .filter(([, entry]) => dates.some((date) => entry.days?.[date]))
+    .filter(([, entry]) => Object.keys(entry.days ?? {}).some((date) => date >= parisToday))
     .map(([slug]) => slug);
 
-  const showtimesBySlug = {};
-  for (const slug of selectedSlugs) {
+  const showtimeEntries = await mapLimit(selectedSlugs, 6, async (slug) => {
     try {
-      showtimesBySlug[slug] = await getJson(`/show/${slug}/showtimes/${cinema.slug}`);
+      return [slug, await getJson(`/show/${slug}/showtimes/${cinema.slug}`)];
     } catch (error) {
       console.warn(`Showtimes unavailable for ${cinema.slug}/${slug}: ${error.message}`);
-      showtimesBySlug[slug] = {};
+      return [slug, {}];
     }
-    await sleep(150);
-  }
+  });
+  const showtimesBySlug = Object.fromEntries(showtimeEntries);
 
   const days = {};
   for (const date of dates) {

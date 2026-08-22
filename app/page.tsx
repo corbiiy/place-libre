@@ -38,6 +38,13 @@ type Schedule = {
   cinemas: Cinema[];
 };
 
+type LiveProgramme = {
+  syncedAt: string;
+  dates: string[];
+  date: string;
+  films: Film[];
+};
+
 const dateLabel = (date: string, style: "long" | "short" = "long") => new Intl.DateTimeFormat("fr-FR", style === "long"
   ? { weekday: "long", day: "numeric", month: "long" }
   : { weekday: "short", day: "2-digit", month: "short" }).format(new Date(`${date}T12:00:00`));
@@ -51,14 +58,21 @@ const filterSessions = (film: Film, vostOnly: boolean) => vostOnly ? film.sessio
 export default function Home() {
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [refreshError, setRefreshError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [cinemaSlug, setCinemaSlug] = useState("cinema-pathe-alesia");
   const [date, setDate] = useState("");
+  const [programmeDates, setProgrammeDates] = useState<string[]>([]);
+  const [dayFilms, setDayFilms] = useState<Film[]>([]);
+  const [syncedAt, setSyncedAt] = useState("");
   const [filmSlug, setFilmSlug] = useState("");
   const [vostOnly, setVostOnly] = useState(true);
   const [checked, setChecked] = useState(false);
   const [seatMap, setSeatMap] = useState<{ url: string; time: string } | null>(null);
   const resultsRef = useRef<HTMLElement>(null);
   const seatMapRef = useRef<HTMLDivElement>(null);
+  const requestIdRef = useRef(0);
+  const vostOnlyRef = useRef(true);
 
   useEffect(() => {
     fetch("/pathe-schedule.json")
@@ -72,29 +86,68 @@ export default function Home() {
         setSchedule(data);
         setCinemaSlug(cinema.slug);
         setDate(initialDate);
+        setProgrammeDates(data.dates);
+        setDayFilms(cinema.days[initialDate] ?? []);
+        setSyncedAt(data.syncedAt);
         setFilmSlug(filterFilms(cinema.days[initialDate] ?? [], true)[0]?.slug ?? "");
+        void refreshProgramme(cinema.slug);
       })
       .catch(() => setLoadError(true));
   }, []);
 
   const cinema = useMemo(() => schedule?.cinemas.find((item) => item.slug === cinemaSlug) ?? null, [schedule, cinemaSlug]);
-  const films = filterFilms(cinema?.days[date] ?? [], vostOnly);
+  const films = filterFilms(dayFilms, vostOnly);
   const film = films.find((item) => item.slug === filmSlug) ?? films[0] ?? null;
   const sessions = film ? filterSessions(film, vostOnly) : [];
 
+  async function refreshProgramme(slug: string, requestedDate?: string) {
+    const requestId = ++requestIdRef.current;
+    setRefreshing(true);
+    setRefreshError(false);
+    try {
+      const params = new URLSearchParams({ cinema: slug });
+      if (requestedDate) params.set("date", requestedDate);
+      const response = await fetch(`/api/pathe?${params}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Programme indisponible");
+      const data: LiveProgramme = await response.json();
+      if (requestId !== requestIdRef.current) return;
+      const visibleFilms = filterFilms(data.films, vostOnlyRef.current);
+      setProgrammeDates(data.dates);
+      setDate(data.date);
+      setDayFilms(data.films);
+      setSyncedAt(data.syncedAt);
+      setFilmSlug(visibleFilms[0]?.slug ?? "");
+      setChecked(false);
+      setSeatMap(null);
+    } catch {
+      if (requestId === requestIdRef.current) setRefreshError(true);
+    } finally {
+      if (requestId === requestIdRef.current) setRefreshing(false);
+    }
+  }
+
   function changeCinema(slug: string) {
     const nextCinema = schedule?.cinemas.find((item) => item.slug === slug);
+    const fallbackDate = schedule?.dates[0] ?? "";
+    const fallbackFilms = nextCinema?.days[fallbackDate] ?? [];
     setCinemaSlug(slug);
-    setFilmSlug(filterFilms(nextCinema?.days[date] ?? [], vostOnly)[0]?.slug ?? "");
+    setDate(fallbackDate);
+    setProgrammeDates(schedule?.dates ?? []);
+    setDayFilms(fallbackFilms);
+    setFilmSlug(filterFilms(fallbackFilms, vostOnly)[0]?.slug ?? "");
     setChecked(false);
     setSeatMap(null);
+    void refreshProgramme(slug);
   }
 
   function changeDate(nextDate: string) {
+    const fallbackFilms = cinema?.days[nextDate] ?? [];
     setDate(nextDate);
-    setFilmSlug(filterFilms(cinema?.days[nextDate] ?? [], vostOnly)[0]?.slug ?? "");
+    setDayFilms(fallbackFilms);
+    setFilmSlug(filterFilms(fallbackFilms, vostOnly)[0]?.slug ?? "");
     setChecked(false);
     setSeatMap(null);
+    void refreshProgramme(cinemaSlug, nextDate);
   }
 
   function showSessions() {
@@ -121,8 +174,9 @@ export default function Home() {
 
   function toggleVost() {
     const nextVostOnly = !vostOnly;
-    const nextFilms = filterFilms(cinema?.days[date] ?? [], nextVostOnly);
+    const nextFilms = filterFilms(dayFilms, nextVostOnly);
     const currentStillAvailable = nextFilms.some((item) => item.slug === filmSlug);
+    vostOnlyRef.current = nextVostOnly;
     setVostOnly(nextVostOnly);
     setFilmSlug(currentStillAvailable ? filmSlug : (nextFilms[0]?.slug ?? ""));
     setChecked(false);
@@ -163,17 +217,17 @@ export default function Home() {
               </label>
               <label>
                 <span>2 · Date</span>
-                <select value={date} onChange={(event) => changeDate(event.target.value)}>
-                  {schedule.dates.map((item) => <option key={item} value={item}>{dateLabel(item)}</option>)}
+                <select value={date} onChange={(event) => changeDate(event.target.value)} disabled={refreshing && !programmeDates.length}>
+                  {programmeDates.map((item) => <option key={item} value={item}>{dateLabel(item)}</option>)}
                 </select>
               </label>
               <label>
                 <span>3 · Film · {films.length} {vostOnly ? "en VOST" : "au programme"}</span>
-                <select value={film?.slug ?? ""} onChange={(event) => selectFilm(event.target.value)} disabled={!films.length}>
+                <select value={film?.slug ?? ""} onChange={(event) => selectFilm(event.target.value)} disabled={refreshing || !films.length}>
                   {films.length ? films.map((item) => <option key={item.slug} value={item.slug}>{item.title}</option>) : <option>{vostOnly ? "Aucun film en VOST ce jour" : "Aucun film ce jour"}</option>}
                 </select>
               </label>
-              <button onClick={showSessions} disabled={!film}>Voir les séances <span>→</span></button>
+              <button onClick={showSessions} disabled={refreshing || !film}>{refreshing ? "Actualisation…" : "Voir les séances"} {!refreshing && <span>→</span>}</button>
             </div>
 
             <div className="format-filter">
@@ -185,7 +239,7 @@ export default function Home() {
             </div>
 
             <div className="date-strip" aria-label="Dates disponibles">
-              {schedule.dates.map((item, index) => (
+              {programmeDates.map((item, index) => (
                 <button key={item} className={date === item ? "active" : ""} onClick={() => changeDate(item)}>
                   <small>{index === 0 ? "Aujourd’hui" : index === 1 ? "Demain" : dateLabel(item, "short").split(" ")[0]}</small>
                   <strong>{item.slice(8, 10)}</strong>
@@ -193,7 +247,7 @@ export default function Home() {
                 </button>
               ))}
             </div>
-            <p className="sync-note">Synchronisé avec Pathé le {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Paris" }).format(new Date(schedule.syncedAt))}</p>
+            <p className="sync-note">{refreshing ? "Actualisation du programme Pathé…" : <>Actualisé automatiquement avec Pathé le {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Paris" }).format(new Date(syncedAt || schedule.syncedAt))}{refreshError && " · version enregistrée affichée"}</>}</p>
           </>
         )}
       </section>
