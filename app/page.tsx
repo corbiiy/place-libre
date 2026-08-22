@@ -45,6 +45,19 @@ type LiveProgramme = {
   films: Film[];
 };
 
+type UpcomingCinema = {
+  slug: string;
+  name: string;
+  district: string;
+  dates: string[];
+};
+
+type UpcomingMovie = Omit<Film, "sessions"> & {
+  firstDate: string;
+  lastDate: string;
+  cinemas: UpcomingCinema[];
+};
+
 const dateLabel = (date: string, style: "long" | "short" = "long") => new Intl.DateTimeFormat("fr-FR", style === "long"
   ? { weekday: "long", day: "numeric", month: "long" }
   : { weekday: "short", day: "2-digit", month: "short" }).format(new Date(`${date}T12:00:00`));
@@ -54,6 +67,41 @@ const usefulTags = (tags: string[]) => tags.filter((tag) => !["DEFAULT", "pmr", 
 const isVost = (session: Session) => session.version?.toUpperCase() === "VOST";
 const filterFilms = (films: Film[], vostOnly: boolean) => vostOnly ? films.filter((film) => film.sessions.some(isVost)) : films;
 const filterSessions = (film: Film, vostOnly: boolean) => vostOnly ? film.sessions.filter(isVost) : film.sessions;
+const monthLabel = (month: string) => new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric" }).format(new Date(`${month}-01T12:00:00`));
+
+function upcomingFromSchedule(schedule: Schedule): UpcomingMovie[] {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(new Date());
+  const movies = new Map<string, UpcomingMovie & { cinemaMap: Map<string, UpcomingCinema> }>();
+  schedule.cinemas.forEach((cinema) => {
+    Object.entries(cinema.days).forEach(([day, films]) => {
+      if (day < today) return;
+      films.forEach((film) => {
+        const movie = movies.get(film.slug) ?? {
+          slug: film.slug,
+          title: film.title,
+          duration: film.duration,
+          genres: film.genres,
+          poster: film.poster,
+          contentRating: film.contentRating,
+          firstDate: day,
+          lastDate: day,
+          cinemas: [],
+          cinemaMap: new Map<string, UpcomingCinema>(),
+        };
+        movie.firstDate = movie.firstDate < day ? movie.firstDate : day;
+        movie.lastDate = movie.lastDate > day ? movie.lastDate : day;
+        const venue = movie.cinemaMap.get(cinema.slug) ?? { slug: cinema.slug, name: cinema.name, district: cinema.district, dates: [] };
+        if (!venue.dates.includes(day)) venue.dates.push(day);
+        movie.cinemaMap.set(cinema.slug, venue);
+        movies.set(film.slug, movie);
+      });
+    });
+  });
+  return [...movies.values()].map(({ cinemaMap, ...movie }) => ({
+    ...movie,
+    cinemas: [...cinemaMap.values()].map((cinema) => ({ ...cinema, dates: cinema.dates.sort() })),
+  })).sort((a, b) => a.firstDate.localeCompare(b.firstDate) || a.title.localeCompare(b.title, "fr"));
+}
 
 export default function Home() {
   const [schedule, setSchedule] = useState<Schedule | null>(null);
@@ -69,8 +117,20 @@ export default function Home() {
   const [vostOnly, setVostOnly] = useState(true);
   const [checked, setChecked] = useState(false);
   const [seatMap, setSeatMap] = useState<{ url: string; time: string } | null>(null);
+  const [upcomingMovies, setUpcomingMovies] = useState<UpcomingMovie[]>([]);
+  const [upcomingMonth, setUpcomingMonth] = useState("");
+  const [upcomingLoading, setUpcomingLoading] = useState(true);
+  const [upcomingError, setUpcomingError] = useState(false);
+  const [upcomingMovieSlug, setUpcomingMovieSlug] = useState("");
+  const [upcomingCinemaSlug, setUpcomingCinemaSlug] = useState("");
+  const [upcomingDate, setUpcomingDate] = useState("");
+  const [upcomingFilm, setUpcomingFilm] = useState<Film | null>(null);
+  const [upcomingChecking, setUpcomingChecking] = useState(false);
+  const [upcomingSeatMap, setUpcomingSeatMap] = useState<{ url: string; time: string } | null>(null);
   const resultsRef = useRef<HTMLElement>(null);
   const seatMapRef = useRef<HTMLDivElement>(null);
+  const upcomingDetailRef = useRef<HTMLDivElement>(null);
+  const upcomingMapRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0);
   const vostOnlyRef = useRef(true);
 
@@ -90,15 +150,34 @@ export default function Home() {
         setDayFilms(cinema.days[initialDate] ?? []);
         setSyncedAt(data.syncedAt);
         setFilmSlug(filterFilms(cinema.days[initialDate] ?? [], true)[0]?.slug ?? "");
+        const fallbackUpcoming = upcomingFromSchedule(data);
+        setUpcomingMovies(fallbackUpcoming);
+        setUpcomingMonth(fallbackUpcoming[0]?.firstDate.slice(0, 7) ?? "");
         void refreshProgramme(cinema.slug);
       })
       .catch(() => setLoadError(true));
+
+    fetch("/api/pathe/upcoming", { cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) throw new Error("Films à venir indisponibles");
+        return response.json();
+      })
+      .then((data: { movies: UpcomingMovie[] }) => {
+        setUpcomingMovies(data.movies);
+        setUpcomingMonth((current) => current || data.movies[0]?.firstDate.slice(0, 7) || "");
+      })
+      .catch(() => setUpcomingError(true))
+      .finally(() => setUpcomingLoading(false));
   }, []);
 
   const cinema = useMemo(() => schedule?.cinemas.find((item) => item.slug === cinemaSlug) ?? null, [schedule, cinemaSlug]);
   const films = filterFilms(dayFilms, vostOnly);
   const film = films.find((item) => item.slug === filmSlug) ?? films[0] ?? null;
   const sessions = film ? filterSessions(film, vostOnly) : [];
+  const upcomingMonths = useMemo(() => [...new Set(upcomingMovies.flatMap((movie) => movie.cinemas.flatMap((cinema) => cinema.dates.map((day) => day.slice(0, 7)))))].sort(), [upcomingMovies]);
+  const visibleUpcomingMovies = useMemo(() => upcomingMovies.filter((movie) => movie.cinemas.some((cinema) => cinema.dates.some((day) => day.startsWith(upcomingMonth)))), [upcomingMovies, upcomingMonth]);
+  const upcomingMovie = upcomingMovies.find((movie) => movie.slug === upcomingMovieSlug) ?? null;
+  const upcomingCinema = upcomingMovie?.cinemas.find((cinema) => cinema.slug === upcomingCinemaSlug) ?? null;
 
   async function refreshProgramme(slug: string, requestedDate?: string) {
     const requestId = ++requestIdRef.current;
@@ -188,6 +267,61 @@ export default function Home() {
     window.setTimeout(() => seatMapRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   }
 
+  function changeUpcomingMonth(month: string) {
+    setUpcomingMonth(month);
+    setUpcomingMovieSlug("");
+    setUpcomingCinemaSlug("");
+    setUpcomingDate("");
+    setUpcomingFilm(null);
+    setUpcomingSeatMap(null);
+  }
+
+  function selectUpcomingMovie(slug: string) {
+    setUpcomingMovieSlug(slug);
+    setUpcomingCinemaSlug("");
+    setUpcomingDate("");
+    setUpcomingFilm(null);
+    setUpcomingSeatMap(null);
+    window.setTimeout(() => upcomingDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  }
+
+  function selectUpcomingCinema(slug: string) {
+    setUpcomingCinemaSlug(slug);
+    setUpcomingDate("");
+    setUpcomingFilm(null);
+    setUpcomingSeatMap(null);
+  }
+
+  async function selectUpcomingDate(day: string) {
+    if (!upcomingMovie || !upcomingCinema) return;
+    setUpcomingDate(day);
+    setUpcomingChecking(true);
+    setUpcomingFilm(null);
+    setUpcomingSeatMap(null);
+    try {
+      const response = await fetch(`/api/pathe?${new URLSearchParams({ cinema: upcomingCinema.slug, date: day })}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Séances indisponibles");
+      const data: LiveProgramme = await response.json();
+      const selectedFilm = data.films.find((item) => item.slug === upcomingMovie.slug) ?? null;
+      setUpcomingFilm(selectedFilm);
+      const onlySession = selectedFilm?.sessions.length === 1 ? selectedFilm.sessions[0] : null;
+      const showMap = onlySession?.status === "available" && onlySession.bookingUrl;
+      setUpcomingSeatMap(showMap ? { url: showMap, time: onlySession.time } : null);
+      window.setTimeout(() => (showMap ? upcomingMapRef : upcomingDetailRef).current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+    } catch {
+      const fallbackCinema = schedule?.cinemas.find((item) => item.slug === upcomingCinema.slug);
+      setUpcomingFilm(fallbackCinema?.days[day]?.find((item) => item.slug === upcomingMovie.slug) ?? null);
+      setUpcomingError(true);
+    } finally {
+      setUpcomingChecking(false);
+    }
+  }
+
+  function openUpcomingSeatMap(url: string, time: string) {
+    setUpcomingSeatMap({ url, time });
+    window.setTimeout(() => upcomingMapRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  }
+
   const sourcePage = cinema && date ? `${cinema.pageUrl}/filters/date-${date}` : "https://www.pathe.fr/cinemas/ville/paris";
 
   return (
@@ -201,6 +335,7 @@ export default function Home() {
         <div className="eyebrow"><span>01</span> Programme officiel</div>
         <h1>Le bon film.<br />La vraie séance.</h1>
         <p className="lede">Choisissez un cinéma parisien et une date. Les films et horaires ci-dessous viennent directement du programme Pathé.</p>
+        <a className="upcoming-jump" href="#a-venir">Explorer les films des prochains mois ↓</a>
 
         {loadError ? (
           <div className="load-message error">Le programme Pathé n’a pas pu être chargé. <button onClick={() => window.location.reload()}>Réessayer</button></div>
@@ -316,6 +451,120 @@ export default function Home() {
           </div>
         </section>
       )}
+
+      <section className="upcoming" id="a-venir">
+        <div className="upcoming-heading">
+          <div>
+            <div className="eyebrow"><span>03</span> Films à venir</div>
+            <h2>Choisissez d’abord<br />le film.</h2>
+            <p>Place Libre analyse le programme des cinémas Pathé à Paris et rassemble les dates annoncées pour les prochains mois.</p>
+          </div>
+          <label className="month-picker">
+            <span>Mois</span>
+            <select value={upcomingMonth} onChange={(event) => changeUpcomingMonth(event.target.value)} disabled={!upcomingMonths.length}>
+              {upcomingMonths.map((month) => <option key={month} value={month}>{monthLabel(month)}</option>)}
+            </select>
+          </label>
+        </div>
+
+        {upcomingLoading && !upcomingMovies.length ? (
+          <div className="load-message"><span className="spinner" /> Analyse des films à venir…</div>
+        ) : (
+          <>
+            <p className="upcoming-count">{visibleUpcomingMovies.length} film{visibleUpcomingMovies.length !== 1 ? "s" : ""} annoncé{visibleUpcomingMovies.length !== 1 ? "s" : ""} en {upcomingMonth ? monthLabel(upcomingMonth) : "ce moment"}{upcomingError && " · programme enregistré affiché"}</p>
+            <div className="movie-grid">
+              {visibleUpcomingMovies.map((movie) => (
+                <button className={movie.slug === upcomingMovieSlug ? "selected" : ""} key={movie.slug} onClick={() => selectUpcomingMovie(movie.slug)}>
+                  <span className="poster-wrap">{movie.poster ? <img src={movie.poster} alt="" loading="lazy" /> : <span className="poster-fallback">PL</span>}</span>
+                  <span className="movie-card-copy">
+                    <strong>{movie.title}</strong>
+                    <small>{[durationLabel(movie.duration), movie.genres[0]].filter(Boolean).join(" · ") || "Film"}</small>
+                    <span>{movie.cinemas.length} cinéma{movie.cinemas.length !== 1 ? "s" : ""} à Paris <b>→</b></span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {upcomingMovie && (
+          <div className="upcoming-detail" ref={upcomingDetailRef}>
+            <div className="upcoming-title-row">
+              <div><span>FILM SÉLECTIONNÉ</span><h3>{upcomingMovie.title}</h3></div>
+              <button onClick={() => selectUpcomingMovie("")} aria-label="Fermer le film sélectionné">Fermer ×</button>
+            </div>
+
+            <div className="upcoming-step">
+              <span className="step-number">1</span>
+              <div><h4>Où le voir à Paris ?</h4><p>Choisissez un cinéma Pathé qui a annoncé ce film.</p></div>
+            </div>
+            <div className="cinema-options">
+              {upcomingMovie.cinemas.map((venue) => (
+                <button className={venue.slug === upcomingCinemaSlug ? "active" : ""} key={venue.slug} onClick={() => selectUpcomingCinema(venue.slug)}>
+                  <strong>{venue.name}</strong><span>{venue.district} · {venue.dates.length} date{venue.dates.length !== 1 ? "s" : ""}</span>
+                </button>
+              ))}
+            </div>
+
+            {upcomingCinema && (
+              <>
+                <div className="upcoming-step">
+                  <span className="step-number">2</span>
+                  <div><h4>À quelle date ?</h4><p>Les dates ci-dessous sont celles annoncées par {upcomingCinema.name}.</p></div>
+                </div>
+                <div className="upcoming-dates">
+                  {upcomingCinema.dates.map((day) => <button className={day === upcomingDate ? "active" : ""} key={day} onClick={() => void selectUpcomingDate(day)}>{dateLabel(day)}</button>)}
+                </div>
+              </>
+            )}
+
+            {upcomingDate && (
+              <div className="upcoming-availability">
+                <div className="upcoming-step">
+                  <span className="step-number">3</span>
+                  <div><h4>Places et plan de salle</h4><p>{dateLabel(upcomingDate)} · {upcomingCinema?.name}</p></div>
+                </div>
+                {upcomingChecking ? (
+                  <div className="upcoming-checking"><span className="spinner" /> Vérification des séances et des places…</div>
+                ) : upcomingFilm?.sessions.length ? (
+                  <>
+                    <div className="availability-banner">
+                      <strong>{upcomingFilm.sessions.some((session) => session.status === "available") ? "PLACES DISPONIBLES" : "COMPLET"}</strong>
+                      <span>{upcomingFilm.sessions.filter((session) => session.status === "available").length} séance{upcomingFilm.sessions.filter((session) => session.status === "available").length !== 1 ? "s" : ""} réservable{upcomingFilm.sessions.filter((session) => session.status === "available").length !== 1 ? "s" : ""}</span>
+                    </div>
+                    <div className="session-grid upcoming-session-grid">
+                      {upcomingFilm.sessions.map((session, index) => {
+                        const hasSeats = session.status === "available";
+                        const available = hasSeats && session.bookingUrl;
+                        return (
+                          <article className={`session-card ${hasSeats ? "has-seats" : "sold-out"}`} key={`${session.time}-${index}`}>
+                            <div className="session-time"><strong>{session.time}</strong>{session.endTime && <span>fin {session.endTime}</span>}</div>
+                            <div className="session-meta"><span>{session.version}</span>{usefulTags(session.tags).map((tag) => <span key={tag}>{tag.toUpperCase()}</span>)}{session.auditorium && <span>Salle {session.auditorium}</span>}</div>
+                            <div className={`seat-answer ${hasSeats ? "yes" : "no"}`}><strong>{hasSeats ? "OUI" : "COMPLET"}</strong><span>{hasSeats ? "Des places sont disponibles" : "Aucune place disponible"}</span></div>
+                            {available ? <button className="seat-map-button" onClick={() => openUpcomingSeatMap(session.bookingUrl!, session.time)}>Afficher le plan des sièges <span>↓</span></button> : <span className="disabled-booking">Séance complète</span>}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <div className="upcoming-unreleased"><strong>Réservation pas encore ouverte</strong><p>Pathé a annoncé le film à cette date, mais les horaires ou le statut des places ne sont pas encore publiés.</p></div>
+                )}
+
+                {upcomingSeatMap && (
+                  <div className="embedded-seat-map" ref={upcomingMapRef}>
+                    <div className="map-toolbar">
+                      <div><span>PLAN OFFICIEL PATHÉ</span><strong>{upcomingMovie.title} · {upcomingSeatMap.time}</strong></div>
+                      <div className="map-actions"><a href={upcomingSeatMap.url} target="_blank" rel="noreferrer">Ouvrir sur Pathé ↗</a><button onClick={() => setUpcomingSeatMap(null)}>Fermer ×</button></div>
+                    </div>
+                    <iframe src={upcomingSeatMap.url} title={`Plan des sièges Pathé pour ${upcomingMovie.title} à ${upcomingSeatMap.time}`} />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
     </main>
   );
 }
