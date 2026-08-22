@@ -371,6 +371,7 @@ export default function Home() {
                 <span><strong>VOST uniquement</strong><small>Version originale sous-titrée</small></span>
               </button>
               {vostOnly && <span className="filter-result">{films.length} film{films.length !== 1 ? "s" : ""} disponible{films.length !== 1 ? "s" : ""}</span>}
+              <span className="access-rule">Disponibilité standard uniquement · places PMR exclues</span>
             </div>
 
             <div className="date-strip" aria-label="Dates disponibles">
@@ -396,7 +397,7 @@ export default function Home() {
               <p>{[durationLabel(film.duration), film.genres.join(", "), film.contentRating, cinema.name, dateLabel(date)].filter(Boolean).join(" · ")}</p>
             </div>
             <div className="heading-actions">
-              <div className="availability-summary"><strong>{sessions.filter((session) => session.status === "available").length}</strong><span>séance{sessions.filter((session) => session.status === "available").length > 1 ? "s" : ""} avec<br />des places</span></div>
+              <div className="availability-summary"><strong>{sessions.filter((session) => session.status === "available" && session.bookingUrl).length}</strong><span>plan{sessions.filter((session) => session.status === "available" && session.bookingUrl).length > 1 ? "s" : ""} à vérifier<br />hors PMR</span></div>
               <a className="source-link" href={sourcePage} target="_blank" rel="noreferrer">Voir la source Pathé ↗</a>
             </div>
           </div>
@@ -405,21 +406,21 @@ export default function Home() {
             <div className="session-grid">
               {sessions.map((session, index) => {
                 const tags = usefulTags(session.tags);
-                const hasSeats = session.status === "available";
-                const available = hasSeats && session.bookingUrl;
+                const bookingOpen = session.status === "available";
+                const available = bookingOpen && session.bookingUrl;
                 return (
-                  <article className={`session-card ${hasSeats ? "has-seats" : "sold-out"}`} key={`${session.time}-${index}`}>
+                  <article className={`session-card ${bookingOpen ? "has-seats" : "sold-out"}`} key={`${session.time}-${index}`}>
                     <div className="session-time"><strong>{session.time}</strong>{session.endTime && <span>fin {session.endTime}</span>}</div>
                     <div className="session-meta">
                       <span>{session.version}</span>
                       {tags.map((tag) => <span key={tag}>{tag.toUpperCase()}</span>)}
                       {session.auditorium && <span>Salle {session.auditorium}</span>}
                     </div>
-                    <div className={`seat-answer ${hasSeats ? "yes" : "no"}`}>
-                      <strong>{hasSeats ? "OUI" : "COMPLET"}</strong>
-                      <span>{hasSeats ? "Des places sont disponibles" : "Aucune place disponible"}</span>
+                    <div className={`seat-answer ${bookingOpen ? "pending" : "no"}`}>
+                      <strong>{bookingOpen ? "À VÉRIFIER" : "COMPLET"}</strong>
+                      <span>{bookingOpen ? "Place standard non confirmée" : "Aucune place disponible"}</span>
                     </div>
-                    {available ? <button className="seat-map-button" onClick={() => openSeatMap(session.bookingUrl!, session.time)}>Afficher le plan des sièges <span>↓</span></button> : <span className="disabled-booking">Séance complète</span>}
+                    {available ? <button className="seat-map-button" onClick={() => openSeatMap(session.bookingUrl!, session.time)}>Vérifier les sièges hors PMR <span>↓</span></button> : <span className="disabled-booking">{bookingOpen ? "Plan indisponible" : "Séance complète"}</span>}
                   </article>
                 );
               })}
@@ -435,7 +436,7 @@ export default function Home() {
           {seatMap && (
             <div className="embedded-seat-map" ref={seatMapRef}>
               <div className="map-toolbar">
-                <div><span>PLAN OFFICIEL PATHÉ</span><strong>{film.title} · {seatMap.time}</strong></div>
+                <div><span>PLAN OFFICIEL PATHÉ</span><strong>{film.title} · {seatMap.time}</strong><em>Ignorez les emplacements PMR : ils ne comptent pas comme fauteuils standards disponibles.</em></div>
                 <div className="map-actions">
                   <a href={seatMap.url} target="_blank" rel="noreferrer">Ouvrir sur Pathé ↗</a>
                   <button onClick={() => setSeatMap(null)} aria-label="Fermer le plan des sièges">Fermer ×</button>
@@ -447,7 +448,7 @@ export default function Home() {
 
           <div className="truth-note">
             <strong>À propos des places</strong>
-            <p>« OUI » et « COMPLET » viennent du statut officiel de la séance Pathé. Le plan intégré est chargé directement depuis la réservation Pathé : ses sièges libres et occupés restent donc à jour.</p>
+            <p>Pathé ne distingue pas les fauteuils standards des emplacements PMR dans son statut de séance. Place Libre ne compte donc jamais une séance « ouverte » comme disponible hors PMR : seul le plan officiel permet de confirmer qu’un fauteuil standard est libre. « COMPLET » reste le statut officiel Pathé.</p>
           </div>
         </section>
       )}
@@ -529,19 +530,19 @@ export default function Home() {
                 ) : upcomingFilm?.sessions.length ? (
                   <>
                     <div className="availability-banner">
-                      <strong>{upcomingFilm.sessions.some((session) => session.status === "available") ? "PLACES DISPONIBLES" : "COMPLET"}</strong>
-                      <span>{upcomingFilm.sessions.filter((session) => session.status === "available").length} séance{upcomingFilm.sessions.filter((session) => session.status === "available").length !== 1 ? "s" : ""} réservable{upcomingFilm.sessions.filter((session) => session.status === "available").length !== 1 ? "s" : ""}</span>
+                      <strong>{upcomingFilm.sessions.some((session) => session.status === "available") ? "VÉRIFIER LE PLAN" : "COMPLET"}</strong>
+                      <span>{upcomingFilm.sessions.filter((session) => session.status === "available" && session.bookingUrl).length} plan{upcomingFilm.sessions.filter((session) => session.status === "available" && session.bookingUrl).length !== 1 ? "s" : ""} consultable{upcomingFilm.sessions.filter((session) => session.status === "available" && session.bookingUrl).length !== 1 ? "s" : ""} · hors PMR</span>
                     </div>
                     <div className="session-grid upcoming-session-grid">
                       {upcomingFilm.sessions.map((session, index) => {
-                        const hasSeats = session.status === "available";
-                        const available = hasSeats && session.bookingUrl;
+                        const bookingOpen = session.status === "available";
+                        const available = bookingOpen && session.bookingUrl;
                         return (
-                          <article className={`session-card ${hasSeats ? "has-seats" : "sold-out"}`} key={`${session.time}-${index}`}>
+                          <article className={`session-card ${bookingOpen ? "has-seats" : "sold-out"}`} key={`${session.time}-${index}`}>
                             <div className="session-time"><strong>{session.time}</strong>{session.endTime && <span>fin {session.endTime}</span>}</div>
                             <div className="session-meta"><span>{session.version}</span>{usefulTags(session.tags).map((tag) => <span key={tag}>{tag.toUpperCase()}</span>)}{session.auditorium && <span>Salle {session.auditorium}</span>}</div>
-                            <div className={`seat-answer ${hasSeats ? "yes" : "no"}`}><strong>{hasSeats ? "OUI" : "COMPLET"}</strong><span>{hasSeats ? "Des places sont disponibles" : "Aucune place disponible"}</span></div>
-                            {available ? <button className="seat-map-button" onClick={() => openUpcomingSeatMap(session.bookingUrl!, session.time)}>Afficher le plan des sièges <span>↓</span></button> : <span className="disabled-booking">Séance complète</span>}
+                            <div className={`seat-answer ${bookingOpen ? "pending" : "no"}`}><strong>{bookingOpen ? "À VÉRIFIER" : "COMPLET"}</strong><span>{bookingOpen ? "Place standard non confirmée" : "Aucune place disponible"}</span></div>
+                            {available ? <button className="seat-map-button" onClick={() => openUpcomingSeatMap(session.bookingUrl!, session.time)}>Vérifier les sièges hors PMR <span>↓</span></button> : <span className="disabled-booking">{bookingOpen ? "Plan indisponible" : "Séance complète"}</span>}
                           </article>
                         );
                       })}
@@ -554,7 +555,7 @@ export default function Home() {
                 {upcomingSeatMap && (
                   <div className="embedded-seat-map" ref={upcomingMapRef}>
                     <div className="map-toolbar">
-                      <div><span>PLAN OFFICIEL PATHÉ</span><strong>{upcomingMovie.title} · {upcomingSeatMap.time}</strong></div>
+                      <div><span>PLAN OFFICIEL PATHÉ</span><strong>{upcomingMovie.title} · {upcomingSeatMap.time}</strong><em>Ignorez les emplacements PMR : ils ne comptent pas comme fauteuils standards disponibles.</em></div>
                       <div className="map-actions"><a href={upcomingSeatMap.url} target="_blank" rel="noreferrer">Ouvrir sur Pathé ↗</a><button onClick={() => setUpcomingSeatMap(null)}>Fermer ×</button></div>
                     </div>
                     <iframe src={upcomingSeatMap.url} title={`Plan des sièges Pathé pour ${upcomingMovie.title} à ${upcomingSeatMap.time}`} />
