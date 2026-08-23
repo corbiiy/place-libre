@@ -70,6 +70,11 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(api, /\.sort\(compareCinemaRank\)/);
   assert.match(page, /selectedMovie\?\.cinemas\.find\(\(cinema\) => cinema\.slug === DEFAULT_CINEMA_SLUG\)/);
   assert.match(page, /setUpcomingCinemaSlug\(defaultCinema\?\.slug \?\? ""\)/);
+  assert.match(page, /<span>Cinéma<\/span>/);
+  assert.match(page, /<option value="">\{upcomingLoading \? "Chargement des cinémas…" : "Tous les cinémas"\}<\/option>/);
+  assert.match(page, /cinema\.slug === upcomingCinemaFilter/);
+  assert.match(page, /upcomingCinemaOptions\.map\(\(cinema\)/);
+  assert.match(page, /setUpcomingCinemaFilter\(cinema\)/);
   assert.match(page, /Nationalité du film/);
   assert.match(page, /<option value="france">France<\/option>/);
   assert.match(page, /<option value="outside-france">Hors France<\/option>/);

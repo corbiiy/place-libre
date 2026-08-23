@@ -161,6 +161,7 @@ export default function Home() {
   const [upcomingMovies, setUpcomingMovies] = useState<UpcomingMovie[]>([]);
   const [upcomingStartDate, setUpcomingStartDate] = useState("");
   const [upcomingEndDate, setUpcomingEndDate] = useState("");
+  const [upcomingCinemaFilter, setUpcomingCinemaFilter] = useState("");
   const [upcomingNationality, setUpcomingNationality] = useState("");
   const [upcomingLanguage, setUpcomingLanguage] = useState("");
   const [tmdbAvailable, setTmdbAvailable] = useState(false);
@@ -186,6 +187,12 @@ export default function Home() {
   const film = films.find((item) => item.slug === filmSlug) ?? films[0] ?? null;
   const sessions = film ? filterSessions(film, vostOnly) : [];
   const upcomingDates = useMemo(() => [...new Set(upcomingMovies.flatMap((movie) => movie.cinemas.flatMap((cinema) => cinema.dates)))].sort(), [upcomingMovies]);
+  const upcomingCinemaOptions = useMemo(() => {
+    const cinemas = new Map<string, UpcomingCinema>();
+    upcomingMovies.forEach((movie) => movie.cinemas.forEach((cinema) => cinemas.set(cinema.slug, cinema)));
+    return [...cinemas.values()].sort(compareCinemaRank);
+  }, [upcomingMovies]);
+  const upcomingCinemaFilterName = upcomingCinemaOptions.find((cinema) => cinema.slug === upcomingCinemaFilter)?.name ?? "";
   const upcomingLanguages = useMemo(() => [...new Set(upcomingMovies.map((movie) => movie.originalLanguage).filter((language): language is string => Boolean(language)))].sort((a, b) => (languageLabel(a) ?? a).localeCompare(languageLabel(b) ?? b, "fr")), [upcomingMovies]);
   const normalizedMovieSearch = normalizeSearch(movieSearch);
   const visibleUpcomingMovies = useMemo(() => upcomingMovies
@@ -196,12 +203,12 @@ export default function Home() {
     .filter((movie) => !upcomingLanguage || movie.originalLanguage === upcomingLanguage)
     .map((movie) => ({
       ...movie,
-      cinemas: movie.cinemas.map((cinema) => ({
+      cinemas: movie.cinemas.filter((cinema) => !upcomingCinemaFilter || cinema.slug === upcomingCinemaFilter).map((cinema) => ({
         ...cinema,
         dates: cinema.dates.filter((day) => (!upcomingStartDate || day >= upcomingStartDate) && (!upcomingEndDate || day <= upcomingEndDate)),
       })).filter((cinema) => cinema.dates.length > 0),
     }))
-    .filter((movie) => movie.cinemas.length > 0), [upcomingMovies, normalizedMovieSearch, upcomingNationality, upcomingLanguage, upcomingStartDate, upcomingEndDate]);
+    .filter((movie) => movie.cinemas.length > 0), [upcomingMovies, normalizedMovieSearch, upcomingCinemaFilter, upcomingNationality, upcomingLanguage, upcomingStartDate, upcomingEndDate]);
   const upcomingMovie = visibleUpcomingMovies.find((movie) => movie.slug === upcomingMovieSlug) ?? null;
   const upcomingCinema = upcomingMovie?.cinemas.find((cinema) => cinema.slug === upcomingCinemaSlug) ?? null;
 
@@ -369,6 +376,11 @@ export default function Home() {
 
   function changeUpcomingNationality(nationality: string) {
     setUpcomingNationality(nationality);
+    resetUpcomingSelection();
+  }
+
+  function changeUpcomingCinemaFilter(cinema: string) {
+    setUpcomingCinemaFilter(cinema);
     resetUpcomingSelection();
   }
 
@@ -587,6 +599,13 @@ export default function Home() {
               <span>Rechercher un film</span>
               <input type="search" value={movieSearch} onChange={(event) => changeMovieSearch(event.target.value)} placeholder="Titre du film…" autoComplete="off" />
             </label>
+            <label className="cinema-picker">
+              <span>Cinéma</span>
+              <select value={upcomingCinemaFilter} onChange={(event) => changeUpcomingCinemaFilter(event.target.value)} disabled={upcomingLoading}>
+                <option value="">{upcomingLoading ? "Chargement des cinémas…" : "Tous les cinémas"}</option>
+                {upcomingCinemaOptions.map((cinema) => <option key={cinema.slug} value={cinema.slug}>{cinema.name} — {cinema.district}</option>)}
+              </select>
+            </label>
             <label className="nationality-picker">
               <span>Nationalité du film</span>
               <select value={upcomingNationality} onChange={(event) => changeUpcomingNationality(event.target.value)} disabled={upcomingLoading}>
@@ -620,7 +639,7 @@ export default function Home() {
           <div className="load-message"><span className="spinner" /> Analyse des films à venir…</div>
         ) : (
           <>
-            <p className="upcoming-count">{visibleUpcomingMovies.length} film{visibleUpcomingMovies.length !== 1 ? "s" : ""} trouvé{visibleUpcomingMovies.length !== 1 ? "s" : ""}{upcomingStartDate && upcomingEndDate && ` du ${rangeDateLabel(upcomingStartDate)} au ${rangeDateLabel(upcomingEndDate)}`}{upcomingNationality && ` · ${upcomingNationality === "france" ? "France" : "Hors France"}`}{upcomingLanguage && ` · ${languageLabel(upcomingLanguage)}`}{normalizedMovieSearch && ` · « ${movieSearch.trim()} »`}{upcomingError && " · programme enregistré affiché"}</p>
+            <p className="upcoming-count">{visibleUpcomingMovies.length} film{visibleUpcomingMovies.length !== 1 ? "s" : ""} trouvé{visibleUpcomingMovies.length !== 1 ? "s" : ""}{upcomingStartDate && upcomingEndDate && ` du ${rangeDateLabel(upcomingStartDate)} au ${rangeDateLabel(upcomingEndDate)}`}{upcomingCinemaFilterName && ` · ${upcomingCinemaFilterName}`}{upcomingNationality && ` · ${upcomingNationality === "france" ? "France" : "Hors France"}`}{upcomingLanguage && ` · ${languageLabel(upcomingLanguage)}`}{normalizedMovieSearch && ` · « ${movieSearch.trim()} »`}{upcomingError && " · programme enregistré affiché"}</p>
             {visibleUpcomingMovies.length ? <div className="movie-grid">
               {visibleUpcomingMovies.map((movie) => (
                 <button className={movie.slug === upcomingMovieSlug ? "selected" : ""} key={movie.slug} onClick={() => selectUpcomingMovie(movie.slug)}>
