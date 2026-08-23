@@ -14,6 +14,20 @@ type Session = {
   capacity: number | null;
 };
 
+type SeatMapSelection = {
+  url: string;
+  time: string;
+  cinemaSlug: string;
+  auditorium: string | null;
+  capacity: number | null;
+};
+
+type IdealSeatZone = {
+  rows: string;
+  seats: string;
+  note: string;
+};
+
 type Film = {
   slug: string;
   title: string;
@@ -84,6 +98,38 @@ const languageLabel = (language: string | null) => {
 const normalizeSearch = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("fr").trim();
 const programmeCache = new Map<string, { expiresAt: number; data: LiveProgramme }>();
 const UPCOMING_DATA_VERSION = "tmdb-language-v1";
+const VERIFIED_IDEAL_ZONES: Record<string, IdealSeatZone> = {
+  "cinema-pathe-alesia:3": {
+    rows: "Rangs C à E",
+    seats: "sièges 10 à 16",
+    note: "Salle 3 analysée : cette zone combine recul confortable et centrage face à l’écran.",
+  },
+};
+
+const auditoriumKey = (cinemaSlug: string, auditorium: string | null) => {
+  const room = auditorium?.replace(/^salle\s*/i, "").trim();
+  return room ? `${cinemaSlug}:${room}` : "";
+};
+
+function IdealSeatGuide({ selection }: { selection: SeatMapSelection }) {
+  const exactZone = VERIFIED_IDEAL_ZONES[auditoriumKey(selection.cinemaSlug, selection.auditorium)];
+  return (
+    <aside className={`ideal-seat-guide ${exactZone ? "is-exact" : ""}`} aria-label="Recommandation de placement">
+      <div className="ideal-seat-copy">
+        <span>{exactZone ? "ZONE IDÉALE CALIBRÉE" : "ZONE IDÉALE UNIVERSELLE"}</span>
+        <strong>{exactZone ? <>{exactZone.rows} · {exactZone.seats}</> : <>50–75 % de profondeur · centre 40 %</>}</strong>
+        <p>{exactZone?.note ?? "Sur le plan Pathé, visez la moitié arrière de la salle et les sièges au centre de chaque rangée."}</p>
+      </div>
+      <div className="ideal-seat-rules" aria-label="Méthode de recommandation">
+        <div><b>1</b><span>Repérez l’écran</span></div>
+        <div><b>2</b><span>Visez le milieu arrière</span></div>
+        <div><b>3</b><span>Restez au centre</span></div>
+      </div>
+      <small>{selection.auditorium ? `Salle ${selection.auditorium}` : "Salle Pathé"}{selection.capacity ? ` · ${selection.capacity} places` : ""} · fauteuils standards uniquement, hors PMR</small>
+    </aside>
+  );
+}
+
 const filterUpcomingCinemas = (movies: UpcomingMovie[]) => movies
   .map((movie) => ({ ...movie, cinemas: movie.cinemas.filter((cinema) => !isExcludedCinema(cinema.slug)).sort(compareCinemaRank) }))
   .filter((movie) => movie.cinemas.length > 0);
@@ -157,7 +203,7 @@ export default function Home() {
   const [filmSlug, setFilmSlug] = useState("");
   const [vostOnly, setVostOnly] = useState(true);
   const [checked, setChecked] = useState(false);
-  const [seatMap, setSeatMap] = useState<{ url: string; time: string } | null>(null);
+  const [seatMap, setSeatMap] = useState<SeatMapSelection | null>(null);
   const [upcomingMovies, setUpcomingMovies] = useState<UpcomingMovie[]>([]);
   const [upcomingStartDate, setUpcomingStartDate] = useState("");
   const [upcomingEndDate, setUpcomingEndDate] = useState("");
@@ -173,7 +219,7 @@ export default function Home() {
   const [upcomingDate, setUpcomingDate] = useState("");
   const [upcomingFilm, setUpcomingFilm] = useState<Film | null>(null);
   const [upcomingChecking, setUpcomingChecking] = useState(false);
-  const [upcomingSeatMap, setUpcomingSeatMap] = useState<{ url: string; time: string } | null>(null);
+  const [upcomingSeatMap, setUpcomingSeatMap] = useState<SeatMapSelection | null>(null);
   const resultsRef = useRef<HTMLElement>(null);
   const seatMapRef = useRef<HTMLDivElement>(null);
   const upcomingDetailRef = useRef<HTMLDivElement>(null);
@@ -320,7 +366,7 @@ export default function Home() {
     const onlySession = sessions.length === 1 ? sessions[0] : null;
     const showMap = onlySession?.status === "available" && onlySession.bookingUrl;
     setChecked(true);
-    setSeatMap(showMap ? { url: showMap, time: onlySession.time } : null);
+    setSeatMap(showMap ? { url: showMap, time: onlySession.time, cinemaSlug, auditorium: onlySession.auditorium, capacity: onlySession.capacity } : null);
     window.setTimeout(() => (showMap ? seatMapRef : resultsRef).current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   }
 
@@ -331,7 +377,7 @@ export default function Home() {
     const showMap = onlySession?.status === "available" && onlySession.bookingUrl;
     setFilmSlug(slug);
     setChecked(Boolean(onlySession));
-    setSeatMap(showMap ? { url: showMap, time: onlySession.time } : null);
+    setSeatMap(showMap ? { url: showMap, time: onlySession.time, cinemaSlug, auditorium: onlySession.auditorium, capacity: onlySession.capacity } : null);
     if (onlySession) {
       window.setTimeout(() => (showMap ? seatMapRef : resultsRef).current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
     }
@@ -348,8 +394,9 @@ export default function Home() {
     setSeatMap(null);
   }
 
-  function openSeatMap(url: string, time: string) {
-    setSeatMap({ url, time });
+  function openSeatMap(session: Session) {
+    if (!session.bookingUrl) return;
+    setSeatMap({ url: session.bookingUrl, time: session.time, cinemaSlug, auditorium: session.auditorium, capacity: session.capacity });
     window.setTimeout(() => seatMapRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   }
 
@@ -439,7 +486,7 @@ export default function Home() {
       setUpcomingFilm(selectedFilm);
       const onlySession = selectedFilm?.sessions.length === 1 ? selectedFilm.sessions[0] : null;
       const showMap = onlySession?.status === "available" && onlySession.bookingUrl;
-      setUpcomingSeatMap(showMap ? { url: showMap, time: onlySession.time } : null);
+      setUpcomingSeatMap(showMap ? { url: showMap, time: onlySession.time, cinemaSlug: cinema.slug, auditorium: onlySession.auditorium, capacity: onlySession.capacity } : null);
       window.setTimeout(() => (showMap ? upcomingMapRef : upcomingDetailRef).current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     } catch {
       if (requestId !== upcomingRequestIdRef.current) return;
@@ -451,8 +498,9 @@ export default function Home() {
     }
   }
 
-  function openUpcomingSeatMap(url: string, time: string) {
-    setUpcomingSeatMap({ url, time });
+  function openUpcomingSeatMap(session: Session) {
+    if (!session.bookingUrl || !upcomingCinema) return;
+    setUpcomingSeatMap({ url: session.bookingUrl, time: session.time, cinemaSlug: upcomingCinema.slug, auditorium: session.auditorium, capacity: session.capacity });
     window.setTimeout(() => upcomingMapRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   }
 
@@ -554,7 +602,7 @@ export default function Home() {
                       <strong>{bookingOpen ? "À VÉRIFIER" : "COMPLET"}</strong>
                       <span>{bookingOpen ? "Place standard non confirmée" : "Aucune place disponible"}</span>
                     </div>
-                    {available ? <button className="seat-map-button" onClick={() => openSeatMap(session.bookingUrl!, session.time)}>Vérifier les sièges hors PMR <span>↓</span></button> : <span className="disabled-booking">{bookingOpen ? "Plan indisponible" : "Séance complète"}</span>}
+                    {available ? <button className="seat-map-button" onClick={() => openSeatMap(session)}>Plan + zone idéale <span>↓</span></button> : <span className="disabled-booking">{bookingOpen ? "Plan indisponible" : "Séance complète"}</span>}
                   </article>
                 );
               })}
@@ -576,6 +624,7 @@ export default function Home() {
                   <button onClick={() => setSeatMap(null)} aria-label="Fermer le plan des sièges">Fermer ×</button>
                 </div>
               </div>
+              <IdealSeatGuide selection={seatMap} />
               <iframe src={seatMap.url} title={`Plan des sièges Pathé pour ${film.title} à ${seatMap.time}`} />
             </div>
           )}
@@ -712,7 +761,7 @@ export default function Home() {
                             <div className="session-time"><strong>{session.time}</strong>{session.endTime && <span>fin {session.endTime}</span>}</div>
                             <div className="session-meta"><span>{session.version}</span>{usefulTags(session.tags).map((tag) => <span key={tag}>{tag.toUpperCase()}</span>)}{session.auditorium && <span>Salle {session.auditorium}</span>}</div>
                             <div className={`seat-answer ${bookingOpen ? "pending" : "no"}`}><strong>{bookingOpen ? "À VÉRIFIER" : "COMPLET"}</strong><span>{bookingOpen ? "Place standard non confirmée" : "Aucune place disponible"}</span></div>
-                            {available ? <button className="seat-map-button" onClick={() => openUpcomingSeatMap(session.bookingUrl!, session.time)}>Vérifier les sièges hors PMR <span>↓</span></button> : <span className="disabled-booking">{bookingOpen ? "Plan indisponible" : "Séance complète"}</span>}
+                            {available ? <button className="seat-map-button" onClick={() => openUpcomingSeatMap(session)}>Plan + zone idéale <span>↓</span></button> : <span className="disabled-booking">{bookingOpen ? "Plan indisponible" : "Séance complète"}</span>}
                           </article>
                         );
                       })}
@@ -728,6 +777,7 @@ export default function Home() {
                       <div><span>PLAN OFFICIEL PATHÉ</span><strong>{upcomingMovie.title} · {upcomingSeatMap.time}</strong><em>Ignorez les emplacements PMR : ils ne comptent pas comme fauteuils standards disponibles.</em></div>
                       <div className="map-actions"><a href={upcomingSeatMap.url} target="_blank" rel="noreferrer">Ouvrir sur Pathé ↗</a><button onClick={() => setUpcomingSeatMap(null)}>Fermer ×</button></div>
                     </div>
+                    <IdealSeatGuide selection={upcomingSeatMap} />
                     <iframe src={upcomingSeatMap.url} title={`Plan des sièges Pathé pour ${upcomingMovie.title} à ${upcomingSeatMap.time}`} />
                   </div>
                 )}

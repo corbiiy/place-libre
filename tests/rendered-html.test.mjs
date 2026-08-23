@@ -99,4 +99,12 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(page, /selectedCinema\?\.dates\.length === 1 \? selectedCinema\.dates\[0\] : null/);
   assert.match(page, /loadUpcomingDate\(selectedMovie, defaultCinema, onlyDate\)/);
   assert.match(page, /loadUpcomingDate\(upcomingMovie, selectedCinema, onlyDate\)/);
+  assert.match(page, /VERIFIED_IDEAL_ZONES/);
+  assert.match(page, /"cinema-pathe-alesia:3"/);
+  assert.match(page, /rows: "Rangs C à E"/);
+  assert.match(page, /seats: "sièges 10 à 16"/);
+  assert.match(page, /50–75 % de profondeur · centre 40 %/);
+  assert.match(page, /<IdealSeatGuide selection=\{seatMap\} \/>/);
+  assert.match(page, /<IdealSeatGuide selection=\{upcomingSeatMap\} \/>/);
+  assert.match(page, /Plan \+ zone idéale/);
 });
