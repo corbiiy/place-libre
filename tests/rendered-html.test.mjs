@@ -38,8 +38,9 @@ test("server-renders the Place Libre loading state", async () => {
 });
 
 test("uses live date-specific Pathé data with a saved fallback", async () => {
-  const [page, route, upcomingRoute, api, cinemas, tmdb] = await Promise.all([
+  const [page, styles, route, upcomingRoute, api, cinemas, tmdb] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/upcoming/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/pathe-api.ts", import.meta.url), "utf8"),
@@ -104,6 +105,11 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(page, /activePage === "programme"/);
   assert.match(page, /activePage === "upcoming"/);
   assert.match(page, /Pages de Place Libre/);
+  assert.doesNotMatch(page, /<span>01<\/span>\s*Programme officiel/);
+  assert.doesNotMatch(page, /<span>03<\/span>\s*Films à venir/);
+  assert.match(page, /Version française/);
+  assert.match(styles, /linear-gradient\(90deg, #0055a4/);
+  assert.match(styles, /#ef4135/);
   assert.match(page, /Voir le plan officiel/);
   assert.doesNotMatch(page, /ExactSeatAnalysis|placelibrehelper|analyse exacte|helper Safari/i);
 });

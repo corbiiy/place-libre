@@ -14,7 +14,6 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .page-switcher button:last-child { border-right: 0; }
 .page-switcher button:hover { background: #fffbd7; }
 .page-switcher button.active { background: var(--ink); color: white; }
-.page-switcher span { margin-right: 6px; color: inherit; opacity: .6; }
 .live-pill { text-transform: uppercase; font-size: 11px; letter-spacing: .16em; font-weight: 800; display: flex; gap: 8px; align-items: center; }
 .live-pill i { width: 7px; height: 7px; border-radius: 50%; background: #ff613f; box-shadow: 0 0 0 4px #ff613f26; }
 .live-pill.verified i { background: #32bd73; box-shadow: 0 0 0 4px #32bd7326; }
@@ -103,6 +102,7 @@ h1 { font-size: clamp(64px, 9vw, 132px); max-width: 1050px; letter-spacing: -.07
 .session-time span { color: #7a756d; font-size: 11px; }
 .session-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0; }
 .session-meta span { border: 1px solid var(--line); padding: 5px 7px; font-size: 9px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.session-meta .version-badge.is-vf { min-width: 44px; border-color: #858585; background: linear-gradient(90deg, #0055a4 0 33.333%, #fff 33.333% 66.666%, #ef4135 66.666% 100%); color: var(--ink); text-align: center; text-shadow: 0 1px 0 rgba(255, 255, 255, .95); }
 .booking-status { margin-top: auto; display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 750; }
 .booking-status i { width: 7px; height: 7px; border-radius: 50%; }
 .booking-status.available { color: #167342; }

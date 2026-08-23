@@ -77,6 +77,7 @@ const dateLabel = (date: string, style: "long" | "short" = "long") => new Intl.D
 const durationLabel = (minutes: number | null) => minutes ? `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}` : null;
 const usefulTags = (tags: string[]) => tags.filter((tag) => !["DEFAULT", "pmr", "GRETA", "hearing-impaired"].includes(tag));
 const isVost = (session: Session) => session.version?.toUpperCase() === "VOST";
+const isVf = (session: Session) => session.version?.toUpperCase() === "VF";
 const filterFilms = (films: Film[], vostOnly: boolean) => vostOnly ? films.filter((film) => film.sessions.some(isVost)) : films;
 const filterSessions = (film: Film, vostOnly: boolean) => vostOnly ? film.sessions.filter(isVost) : film.sessions;
 const releaseDateLabel = (date: string | null) => date ? new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric" }).format(new Date(`${date}T12:00:00`)) : null;
@@ -479,8 +480,8 @@ export default function Home() {
         <a className="brand" href="#top" onClick={() => changePage("programme")} aria-label="Place Libre — accueil"><span className="brand-mark">PL</span><span>PLACE LIBRE</span></a>
         <div className="topbar-actions">
           <nav className="page-switcher" aria-label="Pages de Place Libre">
-            <button className={activePage === "programme" ? "active" : ""} onClick={() => changePage("programme")} aria-pressed={activePage === "programme"}><span>01</span> Programme officiel</button>
-            <button className={activePage === "upcoming" ? "active" : ""} onClick={() => changePage("upcoming")} aria-pressed={activePage === "upcoming"}><span>03</span> Films à venir</button>
+            <button className={activePage === "programme" ? "active" : ""} onClick={() => changePage("programme")} aria-pressed={activePage === "programme"}>Programme officiel</button>
+            <button className={activePage === "upcoming" ? "active" : ""} onClick={() => changePage("upcoming")} aria-pressed={activePage === "upcoming"}>Films à venir</button>
           </nav>
           <span className="live-pill verified"><i /> données Pathé</span>
         </div>
@@ -488,7 +489,7 @@ export default function Home() {
 
       {activePage === "programme" && <>
       <section className="hero" id="top">
-        <div className="eyebrow"><span>01</span> Programme officiel</div>
+        <div className="eyebrow">Programme officiel</div>
         <h1>Le bon film.<br />La vraie séance.</h1>
         <p className="lede">Choisissez un cinéma parisien et une date. Les films et horaires ci-dessous viennent directement du programme Pathé.</p>
 
@@ -567,7 +568,7 @@ export default function Home() {
                   <article className={`session-card ${bookingOpen ? "has-seats" : "sold-out"}`} key={`${session.time}-${index}`}>
                     <div className="session-time"><strong>{session.time}</strong>{session.endTime && <span>fin {session.endTime}</span>}</div>
                     <div className="session-meta">
-                      <span>{session.version}</span>
+                      <span className={`version-badge${isVf(session) ? " is-vf" : ""}`} aria-label={isVf(session) ? "Version française" : undefined}>{session.version}</span>
                       {tags.map((tag) => <span key={tag}>{tag.toUpperCase()}</span>)}
                       {session.auditorium && <span>Salle {session.auditorium}</span>}
                     </div>
@@ -612,7 +613,7 @@ export default function Home() {
       {activePage === "upcoming" && <section className="upcoming" id="films-a-venir">
         <div className="upcoming-heading">
           <div>
-            <div className="eyebrow"><span>03</span> Films à venir</div>
+            <div className="eyebrow">Films à venir</div>
             <h2>Choisissez d’abord<br />le film.</h2>
             <p>Place Libre analyse le programme des cinémas Pathé à Paris et rassemble les dates annoncées pour les prochains mois.</p>
           </div>
@@ -732,7 +733,7 @@ export default function Home() {
                         return (
                           <article className={`session-card ${bookingOpen ? "has-seats" : "sold-out"}`} key={`${session.time}-${index}`}>
                             <div className="session-time"><strong>{session.time}</strong>{session.endTime && <span>fin {session.endTime}</span>}</div>
-                            <div className="session-meta"><span>{session.version}</span>{usefulTags(session.tags).map((tag) => <span key={tag}>{tag.toUpperCase()}</span>)}{session.auditorium && <span>Salle {session.auditorium}</span>}</div>
+                            <div className="session-meta"><span className={`version-badge${isVf(session) ? " is-vf" : ""}`} aria-label={isVf(session) ? "Version française" : undefined}>{session.version}</span>{usefulTags(session.tags).map((tag) => <span key={tag}>{tag.toUpperCase()}</span>)}{session.auditorium && <span>Salle {session.auditorium}</span>}</div>
                             <div className={`seat-answer ${bookingOpen ? "pending" : "no"}`}><strong>{bookingOpen ? "À VÉRIFIER" : "COMPLET"}</strong><span>{bookingOpen ? "Place standard non confirmée" : "Aucune place disponible"}</span></div>
                             {available ? <button className="seat-map-button" onClick={() => openUpcomingSeatMap(session)}>Voir le plan officiel <span>↓</span></button> : <span className="disabled-booking">{bookingOpen ? "Plan indisponible" : "Séance complète"}</span>}
                           </article>
