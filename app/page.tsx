@@ -21,6 +21,7 @@ type Film = {
   genres: string[];
   poster: string | null;
   contentRating: string | null;
+  releaseDate: string | null;
   sessions: Session[];
 };
 
@@ -70,6 +71,8 @@ const isVost = (session: Session) => session.version?.toUpperCase() === "VOST";
 const filterFilms = (films: Film[], vostOnly: boolean) => vostOnly ? films.filter((film) => film.sessions.some(isVost)) : films;
 const filterSessions = (film: Film, vostOnly: boolean) => vostOnly ? film.sessions.filter(isVost) : film.sessions;
 const monthLabel = (month: string) => new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric" }).format(new Date(`${month}-01T12:00:00`));
+const releaseDateLabel = (date: string | null) => date ? new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric" }).format(new Date(`${date}T12:00:00`)) : null;
+const normalizeSearch = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("fr").trim();
 const programmeCache = new Map<string, { expiresAt: number; data: LiveProgramme }>();
 const filterUpcomingCinemas = (movies: UpcomingMovie[]) => movies
   .map((movie) => ({ ...movie, cinemas: movie.cinemas.filter((cinema) => !isExcludedCinema(cinema.slug)) }))
@@ -105,6 +108,7 @@ function upcomingFromSchedule(schedule: Schedule): UpcomingMovie[] {
           genres: film.genres,
           poster: film.poster,
           contentRating: film.contentRating,
+          releaseDate: film.releaseDate ?? null,
           firstDate: day,
           lastDate: day,
           cinemas: [],
@@ -141,6 +145,7 @@ export default function Home() {
   const [seatMap, setSeatMap] = useState<{ url: string; time: string } | null>(null);
   const [upcomingMovies, setUpcomingMovies] = useState<UpcomingMovie[]>([]);
   const [upcomingMonth, setUpcomingMonth] = useState("");
+  const [movieSearch, setMovieSearch] = useState("");
   const [upcomingLoading, setUpcomingLoading] = useState(true);
   const [upcomingError, setUpcomingError] = useState(false);
   const [upcomingMovieSlug, setUpcomingMovieSlug] = useState("");
@@ -162,7 +167,10 @@ export default function Home() {
   const film = films.find((item) => item.slug === filmSlug) ?? films[0] ?? null;
   const sessions = film ? filterSessions(film, vostOnly) : [];
   const upcomingMonths = useMemo(() => [...new Set(upcomingMovies.flatMap((movie) => movie.cinemas.flatMap((cinema) => cinema.dates.map((day) => day.slice(0, 7)))))].sort(), [upcomingMovies]);
-  const visibleUpcomingMovies = useMemo(() => upcomingMovies.filter((movie) => movie.cinemas.some((cinema) => cinema.dates.some((day) => day.startsWith(upcomingMonth)))), [upcomingMovies, upcomingMonth]);
+  const normalizedMovieSearch = normalizeSearch(movieSearch);
+  const visibleUpcomingMovies = useMemo(() => normalizedMovieSearch
+    ? upcomingMovies.filter((movie) => normalizeSearch(movie.title).includes(normalizedMovieSearch))
+    : upcomingMovies.filter((movie) => movie.cinemas.some((cinema) => cinema.dates.some((day) => day.startsWith(upcomingMonth)))), [upcomingMovies, upcomingMonth, normalizedMovieSearch]);
   const upcomingMovie = upcomingMovies.find((movie) => movie.slug === upcomingMovieSlug) ?? null;
   const upcomingCinema = upcomingMovie?.cinemas.find((cinema) => cinema.slug === upcomingCinemaSlug) ?? null;
 
@@ -310,6 +318,16 @@ export default function Home() {
     setUpcomingSeatMap(null);
   }
 
+  function changeMovieSearch(value: string) {
+    upcomingRequestIdRef.current += 1;
+    setMovieSearch(value);
+    setUpcomingMovieSlug("");
+    setUpcomingCinemaSlug("");
+    setUpcomingDate("");
+    setUpcomingFilm(null);
+    setUpcomingSeatMap(null);
+  }
+
   function selectUpcomingMovie(slug: string) {
     upcomingRequestIdRef.current += 1;
     setUpcomingMovieSlug(slug);
@@ -431,7 +449,7 @@ export default function Home() {
             <div>
               <div className="eyebrow"><span>02</span> Séances Pathé</div>
               <h2>{film.title}</h2>
-              <p>{[durationLabel(film.duration), film.genres.join(", "), film.contentRating, cinema.name, dateLabel(date)].filter(Boolean).join(" · ")}</p>
+              <p>{[durationLabel(film.duration), film.genres.join(", "), film.contentRating, film.releaseDate && `Sortie le ${releaseDateLabel(film.releaseDate)}`, cinema.name, dateLabel(date)].filter(Boolean).join(" · ")}</p>
             </div>
             <div className="heading-actions">
               <div className="availability-summary"><strong>{sessions.filter((session) => session.status === "available" && session.bookingUrl).length}</strong><span>plan{sessions.filter((session) => session.status === "available" && session.bookingUrl).length > 1 ? "s" : ""} à vérifier<br />hors PMR</span></div>
@@ -497,38 +515,45 @@ export default function Home() {
             <h2>Choisissez d’abord<br />le film.</h2>
             <p>Place Libre analyse le programme des cinémas Pathé à Paris et rassemble les dates annoncées pour les prochains mois.</p>
           </div>
-          <label className="month-picker">
-            <span>Mois</span>
-            <select value={upcomingMonth} onChange={(event) => changeUpcomingMonth(event.target.value)} disabled={!upcomingMonths.length}>
-              {upcomingMonths.map((month) => <option key={month} value={month}>{monthLabel(month)}</option>)}
-            </select>
-          </label>
+          <div className="upcoming-controls">
+            <label className="movie-search">
+              <span>Rechercher un film</span>
+              <input type="search" value={movieSearch} onChange={(event) => changeMovieSearch(event.target.value)} placeholder="Titre du film…" autoComplete="off" />
+            </label>
+            <label className={`month-picker ${normalizedMovieSearch ? "disabled" : ""}`}>
+              <span>Mois</span>
+              <select value={upcomingMonth} onChange={(event) => changeUpcomingMonth(event.target.value)} disabled={!upcomingMonths.length || Boolean(normalizedMovieSearch)}>
+                {upcomingMonths.map((month) => <option key={month} value={month}>{monthLabel(month)}</option>)}
+              </select>
+            </label>
+          </div>
         </div>
 
         {upcomingLoading && !upcomingMovies.length ? (
           <div className="load-message"><span className="spinner" /> Analyse des films à venir…</div>
         ) : (
           <>
-            <p className="upcoming-count">{visibleUpcomingMovies.length} film{visibleUpcomingMovies.length !== 1 ? "s" : ""} annoncé{visibleUpcomingMovies.length !== 1 ? "s" : ""} en {upcomingMonth ? monthLabel(upcomingMonth) : "ce moment"}{upcomingError && " · programme enregistré affiché"}</p>
-            <div className="movie-grid">
+            <p className="upcoming-count">{visibleUpcomingMovies.length} film{visibleUpcomingMovies.length !== 1 ? "s" : ""} {normalizedMovieSearch ? `trouvé${visibleUpcomingMovies.length !== 1 ? "s" : ""} pour « ${movieSearch.trim()} »` : `annoncé${visibleUpcomingMovies.length !== 1 ? "s" : ""} en ${upcomingMonth ? monthLabel(upcomingMonth) : "ce moment"}`}{upcomingError && " · programme enregistré affiché"}</p>
+            {visibleUpcomingMovies.length ? <div className="movie-grid">
               {visibleUpcomingMovies.map((movie) => (
                 <button className={movie.slug === upcomingMovieSlug ? "selected" : ""} key={movie.slug} onClick={() => selectUpcomingMovie(movie.slug)}>
                   <span className="poster-wrap">{movie.poster ? <img src={movie.poster} alt="" loading="lazy" /> : <span className="poster-fallback">PL</span>}</span>
                   <span className="movie-card-copy">
                     <strong>{movie.title}</strong>
                     <small>{[durationLabel(movie.duration), movie.genres[0]].filter(Boolean).join(" · ") || "Film"}</small>
+                    {movie.releaseDate && <small className="release-date">Sortie le {releaseDateLabel(movie.releaseDate)}</small>}
                     <span>{movie.cinemas.length} cinéma{movie.cinemas.length !== 1 ? "s" : ""} à Paris <b>→</b></span>
                   </span>
                 </button>
               ))}
-            </div>
+            </div> : <div className="empty-search"><strong>Aucun film trouvé</strong><p>Essayez un autre titre ou effacez la recherche pour parcourir les films par mois.</p><button onClick={() => changeMovieSearch("")}>Effacer la recherche</button></div>}
           </>
         )}
 
         {upcomingMovie && (
           <div className="upcoming-detail" ref={upcomingDetailRef}>
             <div className="upcoming-title-row">
-              <div><span>FILM SÉLECTIONNÉ</span><h3>{upcomingMovie.title}</h3></div>
+              <div><span>FILM SÉLECTIONNÉ</span><h3>{upcomingMovie.title}</h3><p>{[upcomingMovie.releaseDate && `Sortie le ${releaseDateLabel(upcomingMovie.releaseDate)}`, durationLabel(upcomingMovie.duration), upcomingMovie.genres[0]].filter(Boolean).join(" · ")}</p></div>
               <button onClick={() => selectUpcomingMovie("")} aria-label="Fermer le film sélectionné">Fermer ×</button>
             </div>
 

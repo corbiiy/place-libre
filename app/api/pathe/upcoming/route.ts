@@ -7,6 +7,7 @@ type PatheShow = {
   genres?: string[];
   posterPath?: { md?: string; lg?: string };
   contentRating?: { description?: string };
+  releaseAt?: { FR_FR?: string };
 };
 
 type PatheProgramme = {
@@ -20,6 +21,7 @@ type AggregatedMovie = {
   genres: string[];
   poster: string | null;
   contentRating: string | null;
+  releaseDate: string | null;
   firstDate: string;
   lastDate: string;
   cinemas: Array<{ slug: string; name: string; district: string; dates: string[] }>;
@@ -56,6 +58,7 @@ export async function GET() {
           genres: show.genres ?? [],
           poster: show.posterPath?.md ?? show.posterPath?.lg ?? null,
           contentRating: show.contentRating?.description ?? null,
+          releaseDate: show.releaseAt?.FR_FR ?? null,
           firstDate: dates[0],
           lastDate: dates.at(-1),
           cinemas: [],

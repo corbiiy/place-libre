@@ -52,6 +52,9 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(route, /getParisCinemas\(\)/);
   assert.match(api, /pendingRequests/);
   assert.match(api, /responseCache/);
+  assert.match(page, /Rechercher un film/);
+  assert.match(page, /releaseDateLabel/);
+  assert.match(route, /releaseDate: show\.releaseAt\?\.FR_FR/);
   assert.match(cinemas, /cinema-pathe-aquaboulevard/);
   assert.match(cinemas, /cinema-la-geode/);
   assert.match(cinemas, /cinema-pathe-montparnos/);

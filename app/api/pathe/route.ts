@@ -8,6 +8,7 @@ type PatheShow = {
   genres?: string[];
   posterPath?: { md?: string; lg?: string };
   contentRating?: { description?: string };
+  releaseAt?: { FR_FR?: string };
 };
 
 type PatheProgramme = {
@@ -70,6 +71,7 @@ export async function GET(request: Request) {
         genres: show.genres ?? [],
         poster: show.posterPath?.md ?? show.posterPath?.lg ?? null,
         contentRating: show.contentRating?.description ?? null,
+        releaseDate: show.releaseAt?.FR_FR ?? null,
         sessions: sessions.map((session) => ({
           time: session.time.slice(11, 16),
           endTime: session.endTime?.slice(11, 16) ?? null,
