@@ -95,7 +95,9 @@ async function loadProgramme(slug: string, requestedDate?: string) {
 
   const params = new URLSearchParams({ cinema: slug });
   if (requestedDate) params.set("date", requestedDate);
-  const response = await fetch(`/api/pathe?${params}`);
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 15_000);
+  const response = await fetch(`/api/pathe?${params}`, { signal: controller.signal }).finally(() => window.clearTimeout(timeout));
   if (!response.ok) throw new Error("Programme indisponible");
   const data: LiveProgramme = await response.json();
   const cachedProgramme = { expiresAt: Date.now() + 60_000, data };

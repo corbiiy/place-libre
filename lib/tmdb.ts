@@ -17,8 +17,7 @@ export type TmdbMatch = {
   originalLanguage: string;
 };
 
-const matchCache = new Map<string, Promise<TmdbMatch | null>>();
-let requestSlot = Promise.resolve();
+const matchCache = new Map<string, { expiresAt: number; value: TmdbMatch | null }>();
 
 const tmdbToken = () => (env as unknown as { TMDB_API_READ_TOKEN?: string }).TMDB_API_READ_TOKEN?.trim() ?? "";
 
@@ -70,15 +69,8 @@ export const isTmdbConfigured = () => Boolean(tmdbToken());
 
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-async function waitForRequestSlot() {
-  const slot = requestSlot.then(() => wait(60));
-  requestSlot = slot.catch(() => undefined);
-  await slot;
-}
-
 async function fetchTmdb(url: URL, token: string) {
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    await waitForRequestSlot();
     const response = await fetch(url, {
       headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
     });
@@ -95,27 +87,25 @@ export async function matchTmdbMovie(title: string, releaseDate: string | null):
 
   const cacheKey = `${title}:${releaseDate ?? ""}`;
   const cached = matchCache.get(cacheKey);
-  if (cached) return cached;
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
 
-  const request = (async () => {
-    const url = new URL("https://api.themoviedb.org/3/search/movie");
-    url.searchParams.set("query", cleanPatheTitle(title));
-    url.searchParams.set("language", "fr-FR");
-    url.searchParams.set("region", "FR");
-    url.searchParams.set("include_adult", "false");
+  const url = new URL("https://api.themoviedb.org/3/search/movie");
+  url.searchParams.set("query", cleanPatheTitle(title));
+  url.searchParams.set("language", "fr-FR");
+  url.searchParams.set("region", "FR");
+  url.searchParams.set("include_adult", "false");
 
-    const response = await fetchTmdb(url, token);
+  const response = await fetchTmdb(url, token);
 
-    const payload = await response.json() as TmdbSearchResponse;
-    const candidates = (payload.results ?? [])
-      .map((candidate) => ({ candidate, score: matchScore(title, releaseDate, candidate) }))
-      .sort((a, b) => b.score - a.score);
-    const best = candidates[0];
-    if (!best || best.score < 10 || !best.candidate.original_language) return null;
-    return { id: best.candidate.id, originalLanguage: best.candidate.original_language };
-  })();
+  const payload = await response.json() as TmdbSearchResponse;
+  const candidates = (payload.results ?? [])
+    .map((candidate) => ({ candidate, score: matchScore(title, releaseDate, candidate) }))
+    .sort((a, b) => b.score - a.score);
+  const best = candidates[0];
+  const match = !best || best.score < 10 || !best.candidate.original_language
+    ? null
+    : { id: best.candidate.id, originalLanguage: best.candidate.original_language };
 
-  matchCache.set(cacheKey, request);
-  void request.catch(() => matchCache.delete(cacheKey));
-  return request;
+  matchCache.set(cacheKey, { expiresAt: Date.now() + 21_600_000, value: match });
+  return match;
 }

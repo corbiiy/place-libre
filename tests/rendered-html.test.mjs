@@ -46,14 +46,17 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
     readFile(new URL("../lib/tmdb.ts", import.meta.url), "utf8"),
   ]);
 
-  assert.match(page, /fetch\(`\/api\/pathe\?\$\{params\}`\)/);
+  assert.match(page, /fetch\(`\/api\/pathe\?\$\{params\}`, \{ signal: controller\.signal \}\)/);
+  assert.match(page, /controller\.abort\(\), 15_000/);
   assert.match(page, /fetch\("\/pathe-schedule\.json"\)/);
   assert.match(page, /programmeCache/);
   assert.doesNotMatch(page, /fetch\("\/pathe-schedule\.json"\)\s*\.then/);
   assert.match(route, /showtimes\/\$\{encodeURIComponent\(cinemaSlug\)\}\/\$\{date\}/);
   assert.match(route, /getParisCinemas\(\)/);
-  assert.match(api, /pendingRequests/);
+  assert.doesNotMatch(api, /pendingRequests/);
   assert.match(api, /responseCache/);
+  assert.doesNotMatch(tmdb, /Map<string, Promise/);
+  assert.match(upcomingRoute, /mapWithConcurrency\(result, 4/);
   assert.match(page, /Rechercher un film/);
   assert.match(page, /releaseDateLabel/);
   assert.match(route, /releaseDate: show\.releaseAt\?\.FR_FR/);

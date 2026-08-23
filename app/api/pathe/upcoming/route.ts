@@ -100,7 +100,7 @@ export async function GET() {
     });
 
     const result = [...movies.values()].sort((a, b) => a.firstDate.localeCompare(b.firstDate) || a.title.localeCompare(b.title, "fr"));
-    const enrichedResult = await mapWithConcurrency(result, 12, async (movie) => {
+    const enrichedResult = await mapWithConcurrency(result, 4, async (movie) => {
       const [detail, tmdbMatch] = await Promise.all([
         getPatheJson<PatheShowDetail>(`/show/${encodeURIComponent(movie.slug)}`, 86_400_000).catch(() => null),
         matchTmdbMovie(movie.title, movie.releaseDate).catch(() => null),

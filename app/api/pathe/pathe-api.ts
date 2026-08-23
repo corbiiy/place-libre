@@ -15,26 +15,16 @@ const patheHeaders = {
 };
 
 const responseCache = new Map<string, { expiresAt: number; value: unknown }>();
-const pendingRequests = new Map<string, Promise<unknown>>();
 
 export async function getPatheJson<T = unknown>(path: string, ttlMs = 300_000): Promise<T> {
   const cached = responseCache.get(path);
   if (cached && cached.expiresAt > Date.now()) return cached.value as T;
 
-  const pending = pendingRequests.get(path);
-  if (pending) return pending as Promise<T>;
-
-  const request = fetch(`${API}${path}`, { headers: patheHeaders })
-    .then(async (response) => {
-      if (!response.ok) throw new Error(`Pathé ${response.status}`);
-      const value = await response.json();
-      responseCache.set(path, { expiresAt: Date.now() + ttlMs, value });
-      return value;
-    })
-    .finally(() => pendingRequests.delete(path));
-
-  pendingRequests.set(path, request);
-  return request as Promise<T>;
+  const response = await fetch(`${API}${path}`, { headers: patheHeaders });
+  if (!response.ok) throw new Error(`Pathé ${response.status}`);
+  const value = await response.json();
+  responseCache.set(path, { expiresAt: Date.now() + ttlMs, value });
+  return value as T;
 }
 
 export async function getParisCinemas() {
