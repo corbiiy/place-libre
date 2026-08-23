@@ -37,13 +37,16 @@ test("server-renders the Place Libre loading state", async () => {
 });
 
 test("uses live date-specific Pathé data with a saved fallback", async () => {
-  const [page, route, upcomingRoute, api, cinemas, tmdb] = await Promise.all([
+  const [page, route, upcomingRoute, api, cinemas, tmdb, seatAnalysis, helperScanner, helperBuild] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/upcoming/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/pathe-api.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/cinemas.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/tmdb.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/seat-analysis.ts", import.meta.url), "utf8"),
+    readFile(new URL("../helper/scanner.js", import.meta.url), "utf8"),
+    readFile(new URL("../helper/build-helper.sh", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /fetch\(`\/api\/pathe\?\$\{params\}`, \{ signal: controller\.signal \}\)/);
@@ -99,17 +102,20 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(page, /selectedCinema\?\.dates\.length === 1 \? selectedCinema\.dates\[0\] : null/);
   assert.match(page, /loadUpcomingDate\(selectedMovie, defaultCinema, onlyDate\)/);
   assert.match(page, /loadUpcomingDate\(upcomingMovie, selectedCinema, onlyDate\)/);
-  assert.match(page, /VERIFIED_IDEAL_ZONES/);
-  assert.match(page, /"cinema-pathe-alesia:3"/);
-  assert.match(page, /rows: "Rangs C à E"/);
-  assert.match(page, /seats: "sièges 10 à 16"/);
-  assert.match(page, /50–75 % de profondeur · centre 40 %/);
-  assert.match(page, /<IdealSeatGuide selection=\{seatMap\} \/>/);
-  assert.match(page, /<IdealSeatGuide selection=\{upcomingSeatMap\} \/>/);
-  assert.match(page, /Plan \+ zone idéale/);
-  assert.match(page, /APERÇU VISUEL/);
-  assert.match(page, /La zone jaune est à privilégier/);
-  assert.match(page, /rowIndex >= 2 && rowIndex <= 4/);
-  assert.match(page, /seatIndex >= 4 && seatIndex <= 10/);
-  assert.match(page, /ideal-zone-screen/);
+  assert.match(page, /place-libre-seat-scan/);
+  assert.match(page, /bookingIdentifiers\(selection\.url\)/);
+  assert.match(page, /isLiveSeatScan\(detail\)/);
+  assert.match(page, /Plan \+ analyse exacte/);
+  assert.match(page, /<ExactSeatAnalysis selection=\{seatMap\}/);
+  assert.match(page, /<ExactSeatAnalysis selection=\{upcomingSeatMap\}/);
+  assert.match(page, /Analyse exacte après chargement/);
+  assert.match(page, /Analyser les meilleures places/);
+  assert.match(page, /place-libre-helper\.zip/);
+  assert.match(page, /Nombre de places/);
+  assert.match(page, /PMR\/accompagnant exclue/);
+  assert.match(seatAnalysis, /DIS\|PMR\|PFR\|WHEEL\|COMP\|ACCOMP/);
+  assert.match(seatAnalysis, /recommendations: candidates\.sort/);
+  assert.match(helperScanner, /getAttribute\("xlink:href"\)/);
+  assert.match(helperScanner, /data-seattypecode/);
+  assert.match(helperBuild, /placelibrehelper/);
 });

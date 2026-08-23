@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { compareCinemaRank, DEFAULT_CINEMA_SLUG, isExcludedCinema } from "../lib/cinemas";
+import { analyseSeatScan, bookingIdentifiers, isLiveSeatScan, type LiveSeatScan } from "../lib/seat-analysis";
 
 type Session = {
   time: string;
@@ -22,10 +23,12 @@ type SeatMapSelection = {
   capacity: number | null;
 };
 
-type IdealSeatZone = {
-  rows: string;
-  seats: string;
-  note: string;
+type ScanStatus = "loading" | "ready" | "scanning" | "complete" | "error";
+
+type SeatScanState = {
+  status: ScanStatus;
+  scan: LiveSeatScan | null;
+  error: string | null;
 };
 
 type Film = {
@@ -98,55 +101,58 @@ const languageLabel = (language: string | null) => {
 const normalizeSearch = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("fr").trim();
 const programmeCache = new Map<string, { expiresAt: number; data: LiveProgramme }>();
 const UPCOMING_DATA_VERSION = "tmdb-language-v1";
-const VERIFIED_IDEAL_ZONES: Record<string, IdealSeatZone> = {
-  "cinema-pathe-alesia:3": {
-    rows: "Rangs C à E",
-    seats: "sièges 10 à 16",
-    note: "Salle 3 analysée : cette zone combine recul confortable et centrage face à l’écran.",
-  },
+const emptyScanState = (): SeatScanState => ({ status: "loading", scan: null, error: null });
+
+const helperLaunchUrl = (bookingUrl: string) => {
+  const bytes = new TextEncoder().encode(bookingUrl);
+  let binary = "";
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return `placelibrehelper://scan/${window.btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")}`;
 };
 
-const auditoriumKey = (cinemaSlug: string, auditorium: string | null) => {
-  const room = auditorium?.replace(/^salle\s*/i, "").trim();
-  return room ? `${cinemaSlug}:${room}` : "";
-};
-
-function IdealSeatGuide({ selection }: { selection: SeatMapSelection }) {
-  const exactZone = VERIFIED_IDEAL_ZONES[auditoriumKey(selection.cinemaSlug, selection.auditorium)];
-  const rows = Array.from({ length: 9 }, (_, index) => String.fromCharCode(65 + index));
-  const seats = Array.from({ length: 15 }, (_, index) => index + 6);
+function ExactSeatAnalysis({ selection, state, partySize, onPartySize, onStart }: {
+  selection: SeatMapSelection;
+  state: SeatScanState;
+  partySize: number;
+  onPartySize: (partySize: number) => void;
+  onStart: () => void;
+}) {
+  const analysis = state.scan ? analyseSeatScan(state.scan, partySize) : null;
+  const launchUrl = typeof window === "undefined" ? "#" : helperLaunchUrl(selection.url);
   return (
-    <aside className={`ideal-seat-guide ${exactZone ? "is-exact" : ""}`} aria-label="Recommandation de placement">
-      <div className="ideal-seat-copy">
-        <span>{exactZone ? "ZONE IDÉALE CALIBRÉE" : "ZONE IDÉALE UNIVERSELLE"}</span>
-        <strong>{exactZone ? <>{exactZone.rows} · {exactZone.seats}</> : <>50–75 % de profondeur · centre 40 %</>}</strong>
-        <p>{exactZone?.note ?? "Sur le plan Pathé, visez la moitié arrière de la salle et les sièges au centre de chaque rangée."}</p>
+    <aside className={`exact-seat-analysis status-${state.status}`} aria-live="polite" aria-label="Analyse exacte des meilleures places">
+      <div className="exact-analysis-heading">
+        <div><span>ANALYSE LIVE DU PLAN PATHÉ</span><strong>{state.status === "complete" ? "Meilleures places disponibles" : "Analyse exacte après chargement"}</strong></div>
+        <label><span>Nombre de places</span><select value={partySize} onChange={(event) => onPartySize(Number(event.target.value))}>{[1, 2, 3, 4].map((count) => <option value={count} key={count}>{count}</option>)}</select></label>
       </div>
-      <div className="ideal-seat-rules" aria-label="Méthode de recommandation">
-        <div><b>1</b><span>Repérez l’écran</span></div>
-        <div><b>2</b><span>Visez le milieu arrière</span></div>
-        <div><b>3</b><span>Restez au centre</span></div>
-      </div>
-      <div className="ideal-zone-visual">
-        <div className="ideal-zone-heading"><strong>APERÇU VISUEL</strong><span>La zone jaune est à privilégier</span></div>
-        <div className="ideal-zone-scroll">
-          <div className="ideal-zone-auditorium" role="img" aria-label={exactZone ? "Zone recommandée : rangs C à E, sièges 10 à 16" : "Zone recommandée au centre, entre 50 et 75 pour cent de la profondeur de la salle"}>
-            <span className="rear-label">ARRIÈRE DE LA SALLE</span>
-            {rows.map((row, rowIndex) => (
-              <div className="ideal-zone-row" key={row}>
-                <b>{exactZone ? row : ""}</b>
-                {seats.map((seat, seatIndex) => {
-                  const highlighted = rowIndex >= 2 && rowIndex <= 4 && seatIndex >= 4 && seatIndex <= 10;
-                  return <i className={highlighted ? "recommended" : ""} key={seat} title={exactZone ? `${row}${seat}` : undefined}>{exactZone ? seat : ""}</i>;
-                })}
-              </div>
-            ))}
-            <div className="ideal-zone-screen">ÉCRAN</div>
-          </div>
+
+      {state.status === "loading" && <div className="analysis-wait"><span className="spinner" /> Chargement du plan officiel Pathé…</div>}
+      {state.status === "ready" && (
+        <div className="analysis-ready">
+          <div><strong>Plan chargé</strong><p>Le helper Safari lit maintenant les numéros et disponibilités de cette séance, sans sélectionner de fauteuil.</p></div>
+          <div className="analysis-ready-actions"><a href={launchUrl} onClick={onStart}>Analyser les meilleures places</a><a href="/downloads/place-libre-helper.zip" download>Installer le helper Safari</a></div>
         </div>
-        <p>{exactZone ? `${exactZone.rows} · ${exactZone.seats}` : "Repère visuel proportionnel — vérifiez ensuite les fauteuils libres sur le plan officiel ci-dessous."}</p>
-      </div>
-      <small>{selection.auditorium ? `Salle ${selection.auditorium}` : "Salle Pathé"}{selection.capacity ? ` · ${selection.capacity} places` : ""} · fauteuils standards uniquement, hors PMR</small>
+      )}
+      {state.status === "scanning" && <div className="analysis-wait"><span className="spinner" /> Lecture des rangs, types et places libres…</div>}
+      {state.status === "error" && (
+        <div className="analysis-error">
+          <div><strong>Helper Safari non détecté</strong><p>Installez-le une seule fois, puis relancez l’analyse. Il ne lit que le plan Pathé ouvert.</p></div>
+          <div className="helper-actions"><a href="/downloads/place-libre-helper.zip" download>Télécharger le helper</a><a href={launchUrl} onClick={onStart}>Réessayer</a></div>
+          <details><summary>Installation sur Safari</summary><ol><li>Décompressez le fichier et placez « Place Libre Helper » dans Applications.</li><li>Ouvrez l’application une première fois avec clic droit → Ouvrir.</li><li>Dans Safari, affichez le menu Développement depuis Réglages → Avancés, puis activez Développement → Autoriser JavaScript depuis les événements Apple.</li><li>Au premier lancement de l’analyse, autorisez le helper à contrôler Safari.</li></ol></details>
+        </div>
+      )}
+      {state.status === "complete" && analysis && (
+        <div className="analysis-result">
+          {analysis.recommendations.length ? (
+            <>
+              <div className="best-seat"><span>MEILLEUR CHOIX</span><strong>{analysis.recommendations[0]?.label}</strong><small>{partySize} place{partySize > 1 ? "s adjacentes" : ""} · centrage et recul optimisés</small></div>
+              <div className="seat-alternatives"><span>ALTERNATIVES</span>{analysis.recommendations.slice(1).map((recommendation) => <strong key={recommendation.label}>{recommendation.label}</strong>)}</div>
+            </>
+          ) : <div className="no-recommended-seat"><strong>Aucun bloc de {partySize} place{partySize > 1 ? "s adjacentes" : ""}</strong><p>Essayez un nombre de places inférieur ou consultez le plan officiel.</p></div>}
+          <div className="analysis-proof"><span>{analysis.availableStandardSeats} places standards libres</span><span>{analysis.excludedAccessibleSeats} PMR/accompagnant exclue{analysis.excludedAccessibleSeats > 1 ? "s" : ""}</span><span>{analysis.countMatches === null ? "Total Pathé non exposé" : analysis.countMatches ? "Comptage Pathé vérifié" : "Comptage Pathé à revérifier"}</span></div>
+        </div>
+      )}
+      <small>{selection.auditorium ? `Salle ${selection.auditorium}` : "Salle Pathé"}{selection.capacity ? ` · ${selection.capacity} places` : ""} · aucune place n’est sélectionnée ou réservée</small>
     </aside>
   );
 }
@@ -225,6 +231,8 @@ export default function Home() {
   const [vostOnly, setVostOnly] = useState(true);
   const [checked, setChecked] = useState(false);
   const [seatMap, setSeatMap] = useState<SeatMapSelection | null>(null);
+  const [seatScanState, setSeatScanState] = useState<SeatScanState>(emptyScanState);
+  const [partySize, setPartySize] = useState(2);
   const [upcomingMovies, setUpcomingMovies] = useState<UpcomingMovie[]>([]);
   const [upcomingStartDate, setUpcomingStartDate] = useState("");
   const [upcomingEndDate, setUpcomingEndDate] = useState("");
@@ -241,6 +249,7 @@ export default function Home() {
   const [upcomingFilm, setUpcomingFilm] = useState<Film | null>(null);
   const [upcomingChecking, setUpcomingChecking] = useState(false);
   const [upcomingSeatMap, setUpcomingSeatMap] = useState<SeatMapSelection | null>(null);
+  const [upcomingSeatScanState, setUpcomingSeatScanState] = useState<SeatScanState>(emptyScanState);
   const resultsRef = useRef<HTMLElement>(null);
   const seatMapRef = useRef<HTMLDivElement>(null);
   const upcomingDetailRef = useRef<HTMLDivElement>(null);
@@ -248,6 +257,16 @@ export default function Home() {
   const requestIdRef = useRef(0);
   const upcomingRequestIdRef = useRef(0);
   const vostOnlyRef = useRef(true);
+
+  function updateSeatMap(selection: SeatMapSelection | null) {
+    setSeatMap(selection);
+    setSeatScanState(emptyScanState());
+  }
+
+  function updateUpcomingSeatMap(selection: SeatMapSelection | null) {
+    setUpcomingSeatMap(selection);
+    setUpcomingSeatScanState(emptyScanState());
+  }
 
   const cinema = useMemo(() => schedule?.cinemas.find((item) => item.slug === cinemaSlug) ?? null, [schedule, cinemaSlug]);
   const films = filterFilms(dayFilms, vostOnly);
@@ -300,7 +319,7 @@ export default function Home() {
       setSyncedAt(data.syncedAt);
       setFilmSlug(visibleFilms[0]?.slug ?? "");
       setChecked(false);
-      setSeatMap(null);
+      updateSeatMap(null);
     } catch {
       if (requestId !== requestIdRef.current) return;
       if (initial) {
@@ -358,6 +377,42 @@ export default function Home() {
       .finally(() => setUpcomingLoading(false));
   }, []);
 
+  useEffect(() => {
+    const applyScan = (scan: LiveSeatScan, selection: SeatMapSelection | null, setState: (state: SeatScanState) => void) => {
+      const identifiers = selection ? bookingIdentifiers(selection.url) : null;
+      if (!identifiers || identifiers.showingIdentifier !== scan.showingIdentifier || identifiers.cinemaIdentifier !== scan.cinemaIdentifier) return;
+      setState({ status: "complete", scan, error: null });
+    };
+    const handleScan = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (!isLiveSeatScan(detail)) return;
+      applyScan(detail, seatMap, setSeatScanState);
+      applyScan(detail, upcomingSeatMap, setUpcomingSeatScanState);
+    };
+    const handleError = () => {
+      setSeatScanState((current) => current.status === "scanning" ? { status: "error", scan: null, error: "helper" } : current);
+      setUpcomingSeatScanState((current) => current.status === "scanning" ? { status: "error", scan: null, error: "helper" } : current);
+    };
+    window.addEventListener("place-libre-seat-scan", handleScan);
+    window.addEventListener("place-libre-seat-scan-error", handleError);
+    return () => {
+      window.removeEventListener("place-libre-seat-scan", handleScan);
+      window.removeEventListener("place-libre-seat-scan-error", handleError);
+    };
+  }, [seatMap, upcomingSeatMap]);
+
+  useEffect(() => {
+    if (seatScanState.status !== "scanning") return;
+    const timeout = window.setTimeout(() => setSeatScanState((current) => current.status === "scanning" ? { status: "error", scan: null, error: "timeout" } : current), 25_000);
+    return () => window.clearTimeout(timeout);
+  }, [seatScanState.status]);
+
+  useEffect(() => {
+    if (upcomingSeatScanState.status !== "scanning") return;
+    const timeout = window.setTimeout(() => setUpcomingSeatScanState((current) => current.status === "scanning" ? { status: "error", scan: null, error: "timeout" } : current), 25_000);
+    return () => window.clearTimeout(timeout);
+  }, [upcomingSeatScanState.status]);
+
   function changeCinema(slug: string) {
     const nextCinema = schedule?.cinemas.find((item) => item.slug === slug);
     const fallbackDate = schedule?.dates[0] ?? "";
@@ -368,7 +423,7 @@ export default function Home() {
     setDayFilms(fallbackFilms);
     setFilmSlug(filterFilms(fallbackFilms, vostOnly)[0]?.slug ?? "");
     setChecked(false);
-    setSeatMap(null);
+    updateSeatMap(null);
     void refreshProgramme(slug);
   }
 
@@ -378,7 +433,7 @@ export default function Home() {
     setDayFilms(fallbackFilms);
     setFilmSlug(filterFilms(fallbackFilms, vostOnly)[0]?.slug ?? "");
     setChecked(false);
-    setSeatMap(null);
+    updateSeatMap(null);
     void refreshProgramme(cinemaSlug, nextDate);
   }
 
@@ -387,7 +442,7 @@ export default function Home() {
     const onlySession = sessions.length === 1 ? sessions[0] : null;
     const showMap = onlySession?.status === "available" && onlySession.bookingUrl;
     setChecked(true);
-    setSeatMap(showMap ? { url: showMap, time: onlySession.time, cinemaSlug, auditorium: onlySession.auditorium, capacity: onlySession.capacity } : null);
+    updateSeatMap(showMap ? { url: showMap, time: onlySession.time, cinemaSlug, auditorium: onlySession.auditorium, capacity: onlySession.capacity } : null);
     window.setTimeout(() => (showMap ? seatMapRef : resultsRef).current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   }
 
@@ -398,7 +453,7 @@ export default function Home() {
     const showMap = onlySession?.status === "available" && onlySession.bookingUrl;
     setFilmSlug(slug);
     setChecked(Boolean(onlySession));
-    setSeatMap(showMap ? { url: showMap, time: onlySession.time, cinemaSlug, auditorium: onlySession.auditorium, capacity: onlySession.capacity } : null);
+    updateSeatMap(showMap ? { url: showMap, time: onlySession.time, cinemaSlug, auditorium: onlySession.auditorium, capacity: onlySession.capacity } : null);
     if (onlySession) {
       window.setTimeout(() => (showMap ? seatMapRef : resultsRef).current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
     }
@@ -412,12 +467,12 @@ export default function Home() {
     setVostOnly(nextVostOnly);
     setFilmSlug(currentStillAvailable ? filmSlug : (nextFilms[0]?.slug ?? ""));
     setChecked(false);
-    setSeatMap(null);
+    updateSeatMap(null);
   }
 
   function openSeatMap(session: Session) {
     if (!session.bookingUrl) return;
-    setSeatMap({ url: session.bookingUrl, time: session.time, cinemaSlug, auditorium: session.auditorium, capacity: session.capacity });
+    updateSeatMap({ url: session.bookingUrl, time: session.time, cinemaSlug, auditorium: session.auditorium, capacity: session.capacity });
     window.setTimeout(() => seatMapRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   }
 
@@ -427,7 +482,7 @@ export default function Home() {
     setUpcomingCinemaSlug("");
     setUpcomingDate("");
     setUpcomingFilm(null);
-    setUpcomingSeatMap(null);
+    updateUpcomingSeatMap(null);
   }
 
   function changeUpcomingStartDate(nextDate: string) {
@@ -473,7 +528,7 @@ export default function Home() {
     setUpcomingCinemaSlug(defaultCinema?.slug ?? "");
     setUpcomingDate(onlyDate ?? "");
     setUpcomingFilm(null);
-    setUpcomingSeatMap(null);
+    updateUpcomingSeatMap(null);
     if (selectedMovie && defaultCinema && onlyDate) void loadUpcomingDate(selectedMovie, defaultCinema, onlyDate);
     window.setTimeout(() => upcomingDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   }
@@ -485,7 +540,7 @@ export default function Home() {
     setUpcomingCinemaSlug(slug);
     setUpcomingDate(onlyDate ?? "");
     setUpcomingFilm(null);
-    setUpcomingSeatMap(null);
+    updateUpcomingSeatMap(null);
     if (upcomingMovie && selectedCinema && onlyDate) void loadUpcomingDate(upcomingMovie, selectedCinema, onlyDate);
   }
 
@@ -499,7 +554,7 @@ export default function Home() {
     setUpcomingDate(day);
     setUpcomingChecking(true);
     setUpcomingFilm(null);
-    setUpcomingSeatMap(null);
+    updateUpcomingSeatMap(null);
     try {
       const data = await loadProgramme(cinema.slug, day);
       if (requestId !== upcomingRequestIdRef.current) return;
@@ -507,7 +562,7 @@ export default function Home() {
       setUpcomingFilm(selectedFilm);
       const onlySession = selectedFilm?.sessions.length === 1 ? selectedFilm.sessions[0] : null;
       const showMap = onlySession?.status === "available" && onlySession.bookingUrl;
-      setUpcomingSeatMap(showMap ? { url: showMap, time: onlySession.time, cinemaSlug: cinema.slug, auditorium: onlySession.auditorium, capacity: onlySession.capacity } : null);
+      updateUpcomingSeatMap(showMap ? { url: showMap, time: onlySession.time, cinemaSlug: cinema.slug, auditorium: onlySession.auditorium, capacity: onlySession.capacity } : null);
       window.setTimeout(() => (showMap ? upcomingMapRef : upcomingDetailRef).current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     } catch {
       if (requestId !== upcomingRequestIdRef.current) return;
@@ -521,7 +576,7 @@ export default function Home() {
 
   function openUpcomingSeatMap(session: Session) {
     if (!session.bookingUrl || !upcomingCinema) return;
-    setUpcomingSeatMap({ url: session.bookingUrl, time: session.time, cinemaSlug: upcomingCinema.slug, auditorium: session.auditorium, capacity: session.capacity });
+    updateUpcomingSeatMap({ url: session.bookingUrl, time: session.time, cinemaSlug: upcomingCinema.slug, auditorium: session.auditorium, capacity: session.capacity });
     window.setTimeout(() => upcomingMapRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   }
 
@@ -623,7 +678,7 @@ export default function Home() {
                       <strong>{bookingOpen ? "À VÉRIFIER" : "COMPLET"}</strong>
                       <span>{bookingOpen ? "Place standard non confirmée" : "Aucune place disponible"}</span>
                     </div>
-                    {available ? <button className="seat-map-button" onClick={() => openSeatMap(session)}>Plan + zone idéale <span>↓</span></button> : <span className="disabled-booking">{bookingOpen ? "Plan indisponible" : "Séance complète"}</span>}
+                    {available ? <button className="seat-map-button" onClick={() => openSeatMap(session)}>Plan + analyse exacte <span>↓</span></button> : <span className="disabled-booking">{bookingOpen ? "Plan indisponible" : "Séance complète"}</span>}
                   </article>
                 );
               })}
@@ -642,11 +697,11 @@ export default function Home() {
                 <div><span>PLAN OFFICIEL PATHÉ</span><strong>{film.title} · {seatMap.time}</strong><em>Ignorez les emplacements PMR : ils ne comptent pas comme fauteuils standards disponibles.</em></div>
                 <div className="map-actions">
                   <a href={seatMap.url} target="_blank" rel="noreferrer">Ouvrir sur Pathé ↗</a>
-                  <button onClick={() => setSeatMap(null)} aria-label="Fermer le plan des sièges">Fermer ×</button>
+                  <button onClick={() => updateSeatMap(null)} aria-label="Fermer le plan des sièges">Fermer ×</button>
                 </div>
               </div>
-              <IdealSeatGuide selection={seatMap} />
-              <iframe src={seatMap.url} title={`Plan des sièges Pathé pour ${film.title} à ${seatMap.time}`} />
+              <ExactSeatAnalysis selection={seatMap} state={seatScanState} partySize={partySize} onPartySize={setPartySize} onStart={() => setSeatScanState({ status: "scanning", scan: null, error: null })} />
+              <iframe src={seatMap.url} onLoad={() => setSeatScanState((current) => current.status === "loading" ? { status: "ready", scan: null, error: null } : current)} title={`Plan des sièges Pathé pour ${film.title} à ${seatMap.time}`} />
             </div>
           )}
 
@@ -782,7 +837,7 @@ export default function Home() {
                             <div className="session-time"><strong>{session.time}</strong>{session.endTime && <span>fin {session.endTime}</span>}</div>
                             <div className="session-meta"><span>{session.version}</span>{usefulTags(session.tags).map((tag) => <span key={tag}>{tag.toUpperCase()}</span>)}{session.auditorium && <span>Salle {session.auditorium}</span>}</div>
                             <div className={`seat-answer ${bookingOpen ? "pending" : "no"}`}><strong>{bookingOpen ? "À VÉRIFIER" : "COMPLET"}</strong><span>{bookingOpen ? "Place standard non confirmée" : "Aucune place disponible"}</span></div>
-                            {available ? <button className="seat-map-button" onClick={() => openUpcomingSeatMap(session)}>Plan + zone idéale <span>↓</span></button> : <span className="disabled-booking">{bookingOpen ? "Plan indisponible" : "Séance complète"}</span>}
+                            {available ? <button className="seat-map-button" onClick={() => openUpcomingSeatMap(session)}>Plan + analyse exacte <span>↓</span></button> : <span className="disabled-booking">{bookingOpen ? "Plan indisponible" : "Séance complète"}</span>}
                           </article>
                         );
                       })}
@@ -796,10 +851,10 @@ export default function Home() {
                   <div className="embedded-seat-map" ref={upcomingMapRef}>
                     <div className="map-toolbar">
                       <div><span>PLAN OFFICIEL PATHÉ</span><strong>{upcomingMovie.title} · {upcomingSeatMap.time}</strong><em>Ignorez les emplacements PMR : ils ne comptent pas comme fauteuils standards disponibles.</em></div>
-                      <div className="map-actions"><a href={upcomingSeatMap.url} target="_blank" rel="noreferrer">Ouvrir sur Pathé ↗</a><button onClick={() => setUpcomingSeatMap(null)}>Fermer ×</button></div>
+                      <div className="map-actions"><a href={upcomingSeatMap.url} target="_blank" rel="noreferrer">Ouvrir sur Pathé ↗</a><button onClick={() => updateUpcomingSeatMap(null)}>Fermer ×</button></div>
                     </div>
-                    <IdealSeatGuide selection={upcomingSeatMap} />
-                    <iframe src={upcomingSeatMap.url} title={`Plan des sièges Pathé pour ${upcomingMovie.title} à ${upcomingSeatMap.time}`} />
+                    <ExactSeatAnalysis selection={upcomingSeatMap} state={upcomingSeatScanState} partySize={partySize} onPartySize={setPartySize} onStart={() => setUpcomingSeatScanState({ status: "scanning", scan: null, error: null })} />
+                    <iframe src={upcomingSeatMap.url} onLoad={() => setUpcomingSeatScanState((current) => current.status === "loading" ? { status: "ready", scan: null, error: null } : current)} title={`Plan des sièges Pathé pour ${upcomingMovie.title} à ${upcomingSeatMap.time}`} />
                   </div>
                 )}
               </div>
