@@ -87,4 +87,8 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(tmdb, /original_language/);
   assert.match(page, /Langue originale · TMDB/);
   assert.match(page, /movie\.originalLanguage === upcomingLanguage/);
+  assert.match(page, /defaultCinema\?\.dates\.length === 1 \? defaultCinema\.dates\[0\] : null/);
+  assert.match(page, /selectedCinema\?\.dates\.length === 1 \? selectedCinema\.dates\[0\] : null/);
+  assert.match(page, /loadUpcomingDate\(selectedMovie, defaultCinema, onlyDate\)/);
+  assert.match(page, /loadUpcomingDate\(upcomingMovie, selectedCinema, onlyDate\)/);
 });

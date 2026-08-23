@@ -386,33 +386,42 @@ export default function Home() {
     const defaultCinema = selectedMovie?.cinemas.find((cinema) => cinema.slug === DEFAULT_CINEMA_SLUG)
       ?? selectedMovie?.cinemas[0]
       ?? null;
+    const onlyDate = defaultCinema?.dates.length === 1 ? defaultCinema.dates[0] : null;
     setUpcomingMovieSlug(slug);
     setUpcomingCinemaSlug(defaultCinema?.slug ?? "");
-    setUpcomingDate("");
+    setUpcomingDate(onlyDate ?? "");
     setUpcomingFilm(null);
     setUpcomingSeatMap(null);
+    if (selectedMovie && defaultCinema && onlyDate) void loadUpcomingDate(selectedMovie, defaultCinema, onlyDate);
     window.setTimeout(() => upcomingDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   }
 
   function selectUpcomingCinema(slug: string) {
     upcomingRequestIdRef.current += 1;
+    const selectedCinema = upcomingMovie?.cinemas.find((cinema) => cinema.slug === slug) ?? null;
+    const onlyDate = selectedCinema?.dates.length === 1 ? selectedCinema.dates[0] : null;
     setUpcomingCinemaSlug(slug);
-    setUpcomingDate("");
+    setUpcomingDate(onlyDate ?? "");
     setUpcomingFilm(null);
     setUpcomingSeatMap(null);
+    if (upcomingMovie && selectedCinema && onlyDate) void loadUpcomingDate(upcomingMovie, selectedCinema, onlyDate);
   }
 
   async function selectUpcomingDate(day: string) {
     if (!upcomingMovie || !upcomingCinema) return;
+    await loadUpcomingDate(upcomingMovie, upcomingCinema, day);
+  }
+
+  async function loadUpcomingDate(movie: UpcomingMovie, cinema: UpcomingCinema, day: string) {
     const requestId = ++upcomingRequestIdRef.current;
     setUpcomingDate(day);
     setUpcomingChecking(true);
     setUpcomingFilm(null);
     setUpcomingSeatMap(null);
     try {
-      const data = await loadProgramme(upcomingCinema.slug, day);
+      const data = await loadProgramme(cinema.slug, day);
       if (requestId !== upcomingRequestIdRef.current) return;
-      const selectedFilm = data.films.find((item) => item.slug === upcomingMovie.slug) ?? null;
+      const selectedFilm = data.films.find((item) => item.slug === movie.slug) ?? null;
       setUpcomingFilm(selectedFilm);
       const onlySession = selectedFilm?.sessions.length === 1 ? selectedFilm.sessions[0] : null;
       const showMap = onlySession?.status === "available" && onlySession.bookingUrl;
@@ -420,8 +429,8 @@ export default function Home() {
       window.setTimeout(() => (showMap ? upcomingMapRef : upcomingDetailRef).current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     } catch {
       if (requestId !== upcomingRequestIdRef.current) return;
-      const fallbackCinema = schedule?.cinemas.find((item) => item.slug === upcomingCinema.slug);
-      setUpcomingFilm(fallbackCinema?.days[day]?.find((item) => item.slug === upcomingMovie.slug) ?? null);
+      const fallbackCinema = schedule?.cinemas.find((item) => item.slug === cinema.slug);
+      setUpcomingFilm(fallbackCinema?.days[day]?.find((item) => item.slug === movie.slug) ?? null);
       setUpcomingError(true);
     } finally {
       if (requestId === upcomingRequestIdRef.current) setUpcomingChecking(false);
