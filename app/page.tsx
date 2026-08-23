@@ -113,6 +113,8 @@ const auditoriumKey = (cinemaSlug: string, auditorium: string | null) => {
 
 function IdealSeatGuide({ selection }: { selection: SeatMapSelection }) {
   const exactZone = VERIFIED_IDEAL_ZONES[auditoriumKey(selection.cinemaSlug, selection.auditorium)];
+  const rows = Array.from({ length: 9 }, (_, index) => String.fromCharCode(65 + index));
+  const seats = Array.from({ length: 15 }, (_, index) => index + 6);
   return (
     <aside className={`ideal-seat-guide ${exactZone ? "is-exact" : ""}`} aria-label="Recommandation de placement">
       <div className="ideal-seat-copy">
@@ -124,6 +126,25 @@ function IdealSeatGuide({ selection }: { selection: SeatMapSelection }) {
         <div><b>1</b><span>Repérez l’écran</span></div>
         <div><b>2</b><span>Visez le milieu arrière</span></div>
         <div><b>3</b><span>Restez au centre</span></div>
+      </div>
+      <div className="ideal-zone-visual">
+        <div className="ideal-zone-heading"><strong>APERÇU VISUEL</strong><span>La zone jaune est à privilégier</span></div>
+        <div className="ideal-zone-scroll">
+          <div className="ideal-zone-auditorium" role="img" aria-label={exactZone ? "Zone recommandée : rangs C à E, sièges 10 à 16" : "Zone recommandée au centre, entre 50 et 75 pour cent de la profondeur de la salle"}>
+            <span className="rear-label">ARRIÈRE DE LA SALLE</span>
+            {rows.map((row, rowIndex) => (
+              <div className="ideal-zone-row" key={row}>
+                <b>{exactZone ? row : ""}</b>
+                {seats.map((seat, seatIndex) => {
+                  const highlighted = rowIndex >= 2 && rowIndex <= 4 && seatIndex >= 4 && seatIndex <= 10;
+                  return <i className={highlighted ? "recommended" : ""} key={seat} title={exactZone ? `${row}${seat}` : undefined}>{exactZone ? seat : ""}</i>;
+                })}
+              </div>
+            ))}
+            <div className="ideal-zone-screen">ÉCRAN</div>
+          </div>
+        </div>
+        <p>{exactZone ? `${exactZone.rows} · ${exactZone.seats}` : "Repère visuel proportionnel — vérifiez ensuite les fauteuils libres sur le plan officiel ci-dessous."}</p>
       </div>
       <small>{selection.auditorium ? `Salle ${selection.auditorium}` : "Salle Pathé"}{selection.capacity ? ` · ${selection.capacity} places` : ""} · fauteuils standards uniquement, hors PMR</small>
     </aside>

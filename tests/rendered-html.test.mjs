@@ -107,4 +107,9 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(page, /<IdealSeatGuide selection=\{seatMap\} \/>/);
   assert.match(page, /<IdealSeatGuide selection=\{upcomingSeatMap\} \/>/);
   assert.match(page, /Plan \+ zone idéale/);
+  assert.match(page, /APERÇU VISUEL/);
+  assert.match(page, /La zone jaune est à privilégier/);
+  assert.match(page, /rowIndex >= 2 && rowIndex <= 4/);
+  assert.match(page, /seatIndex >= 4 && seatIndex <= 10/);
+  assert.match(page, /ideal-zone-screen/);
 });
