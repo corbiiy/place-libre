@@ -1,4 +1,5 @@
 import { getParisCinemas, getPatheJson } from "../pathe-api";
+import { isTmdbConfigured, matchTmdbMovie } from "../../../../lib/tmdb";
 
 type PatheShow = {
   slug: string;
@@ -28,6 +29,8 @@ type AggregatedMovie = {
   contentRating: string | null;
   releaseDate: string | null;
   nationality: string | null;
+  originalLanguage: string | null;
+  tmdbId: number | null;
   firstDate: string;
   lastDate: string;
   cinemas: Array<{ slug: string; name: string; district: string; dates: string[] }>;
@@ -78,6 +81,8 @@ export async function GET() {
           contentRating: show.contentRating?.description ?? null,
           releaseDate: show.releaseAt?.FR_FR ?? null,
           nationality: null,
+          originalLanguage: null,
+          tmdbId: null,
           firstDate: dates[0],
           lastDate: dates.at(-1),
           cinemas: [],
@@ -96,14 +101,18 @@ export async function GET() {
 
     const result = [...movies.values()].sort((a, b) => a.firstDate.localeCompare(b.firstDate) || a.title.localeCompare(b.title, "fr"));
     const enrichedResult = await mapWithConcurrency(result, 12, async (movie) => {
-      try {
-        const detail = await getPatheJson<PatheShowDetail>(`/show/${encodeURIComponent(movie.slug)}`, 86_400_000);
-        return { ...movie, nationality: detail.nationality ?? detail.nationalityTracking ?? null };
-      } catch {
-        return movie;
-      }
+      const [detail, tmdbMatch] = await Promise.all([
+        getPatheJson<PatheShowDetail>(`/show/${encodeURIComponent(movie.slug)}`, 86_400_000).catch(() => null),
+        matchTmdbMovie(movie.title, movie.releaseDate).catch(() => null),
+      ]);
+      return {
+        ...movie,
+        nationality: detail?.nationality ?? detail?.nationalityTracking ?? null,
+        originalLanguage: tmdbMatch?.originalLanguage ?? null,
+        tmdbId: tmdbMatch?.id ?? null,
+      };
     });
-    return Response.json({ syncedAt: new Date().toISOString(), movies: enrichedResult }, {
+    return Response.json({ syncedAt: new Date().toISOString(), sources: { pathe: true, tmdb: isTmdbConfigured() }, movies: enrichedResult }, {
       headers: { "Cache-Control": "public, max-age=300, s-maxage=1800, stale-while-revalidate=3600" },
     });
   } catch {

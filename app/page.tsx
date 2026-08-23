@@ -57,6 +57,8 @@ type UpcomingCinema = {
 
 type UpcomingMovie = Omit<Film, "sessions"> & {
   nationality: string | null;
+  originalLanguage: string | null;
+  tmdbId: number | null;
   firstDate: string;
   lastDate: string;
   cinemas: UpcomingCinema[];
@@ -73,9 +75,15 @@ const filterFilms = (films: Film[], vostOnly: boolean) => vostOnly ? films.filte
 const filterSessions = (film: Film, vostOnly: boolean) => vostOnly ? film.sessions.filter(isVost) : film.sessions;
 const releaseDateLabel = (date: string | null) => date ? new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric" }).format(new Date(`${date}T12:00:00`)) : null;
 const rangeDateLabel = (date: string) => new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric" }).format(new Date(`${date}T12:00:00`));
+const languageNames = new Intl.DisplayNames(["fr"], { type: "language" });
+const languageLabel = (language: string | null) => {
+  if (!language) return null;
+  const label = languageNames.of(language) ?? language.toUpperCase();
+  return label.charAt(0).toUpperCase() + label.slice(1);
+};
 const normalizeSearch = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("fr").trim();
 const programmeCache = new Map<string, { expiresAt: number; data: LiveProgramme }>();
-const UPCOMING_DATA_VERSION = "nationality-v1";
+const UPCOMING_DATA_VERSION = "tmdb-language-v1";
 const filterUpcomingCinemas = (movies: UpcomingMovie[]) => movies
   .map((movie) => ({ ...movie, cinemas: movie.cinemas.filter((cinema) => !isExcludedCinema(cinema.slug)).sort(compareCinemaRank) }))
   .filter((movie) => movie.cinemas.length > 0);
@@ -112,6 +120,8 @@ function upcomingFromSchedule(schedule: Schedule): UpcomingMovie[] {
           contentRating: film.contentRating,
           releaseDate: film.releaseDate ?? null,
           nationality: null,
+          originalLanguage: null,
+          tmdbId: null,
           firstDate: day,
           lastDate: day,
           cinemas: [],
@@ -150,6 +160,8 @@ export default function Home() {
   const [upcomingStartDate, setUpcomingStartDate] = useState("");
   const [upcomingEndDate, setUpcomingEndDate] = useState("");
   const [upcomingNationality, setUpcomingNationality] = useState("");
+  const [upcomingLanguage, setUpcomingLanguage] = useState("");
+  const [tmdbAvailable, setTmdbAvailable] = useState(false);
   const [movieSearch, setMovieSearch] = useState("");
   const [upcomingLoading, setUpcomingLoading] = useState(true);
   const [upcomingError, setUpcomingError] = useState(false);
@@ -172,12 +184,14 @@ export default function Home() {
   const film = films.find((item) => item.slug === filmSlug) ?? films[0] ?? null;
   const sessions = film ? filterSessions(film, vostOnly) : [];
   const upcomingDates = useMemo(() => [...new Set(upcomingMovies.flatMap((movie) => movie.cinemas.flatMap((cinema) => cinema.dates)))].sort(), [upcomingMovies]);
+  const upcomingLanguages = useMemo(() => [...new Set(upcomingMovies.map((movie) => movie.originalLanguage).filter((language): language is string => Boolean(language)))].sort((a, b) => (languageLabel(a) ?? a).localeCompare(languageLabel(b) ?? b, "fr")), [upcomingMovies]);
   const normalizedMovieSearch = normalizeSearch(movieSearch);
   const visibleUpcomingMovies = useMemo(() => upcomingMovies
     .filter((movie) => !normalizedMovieSearch || normalizeSearch(movie.title).includes(normalizedMovieSearch))
     .filter((movie) => !upcomingNationality
       || (upcomingNationality === "france" && movie.nationality === "France")
       || (upcomingNationality === "outside-france" && movie.nationality !== "France"))
+    .filter((movie) => !upcomingLanguage || movie.originalLanguage === upcomingLanguage)
     .map((movie) => ({
       ...movie,
       cinemas: movie.cinemas.map((cinema) => ({
@@ -185,7 +199,7 @@ export default function Home() {
         dates: cinema.dates.filter((day) => (!upcomingStartDate || day >= upcomingStartDate) && (!upcomingEndDate || day <= upcomingEndDate)),
       })).filter((cinema) => cinema.dates.length > 0),
     }))
-    .filter((movie) => movie.cinemas.length > 0), [upcomingMovies, normalizedMovieSearch, upcomingNationality, upcomingStartDate, upcomingEndDate]);
+    .filter((movie) => movie.cinemas.length > 0), [upcomingMovies, normalizedMovieSearch, upcomingNationality, upcomingLanguage, upcomingStartDate, upcomingEndDate]);
   const upcomingMovie = visibleUpcomingMovies.find((movie) => movie.slug === upcomingMovieSlug) ?? null;
   const upcomingCinema = upcomingMovie?.cinemas.find((cinema) => cinema.slug === upcomingCinemaSlug) ?? null;
 
@@ -255,9 +269,10 @@ export default function Home() {
         if (!response.ok) throw new Error("Films à venir indisponibles");
         return response.json();
       })
-      .then((data: { movies: UpcomingMovie[] }) => {
+      .then((data: { movies: UpcomingMovie[]; sources?: { tmdb?: boolean } }) => {
         const movies = filterUpcomingCinemas(data.movies);
         setUpcomingMovies(movies);
+        setTmdbAvailable(Boolean(data.sources?.tmdb));
         const dates = [...new Set(movies.flatMap((movie) => movie.cinemas.flatMap((venue) => venue.dates)))].sort();
         const firstDate = dates[0] ?? "";
         setUpcomingStartDate((current) => current || firstDate);
@@ -352,6 +367,11 @@ export default function Home() {
 
   function changeUpcomingNationality(nationality: string) {
     setUpcomingNationality(nationality);
+    resetUpcomingSelection();
+  }
+
+  function changeUpcomingLanguage(language: string) {
+    setUpcomingLanguage(language);
     resetUpcomingSelection();
   }
 
@@ -564,6 +584,13 @@ export default function Home() {
                 <option value="outside-france">Hors France</option>
               </select>
             </label>
+            <label className="language-picker">
+              <span>Langue originale · TMDB</span>
+              <select value={upcomingLanguage} onChange={(event) => changeUpcomingLanguage(event.target.value)} disabled={upcomingLoading || !tmdbAvailable}>
+                <option value="">{upcomingLoading ? "Chargement des langues…" : tmdbAvailable ? "Toutes les langues" : "Connexion TMDB requise"}</option>
+                {upcomingLanguages.map((language) => <option key={language} value={language}>{languageLabel(language)}</option>)}
+              </select>
+            </label>
             <div className="date-range" aria-label="Période de programmation">
               <label>
                 <span>À partir du</span>
@@ -582,7 +609,7 @@ export default function Home() {
           <div className="load-message"><span className="spinner" /> Analyse des films à venir…</div>
         ) : (
           <>
-            <p className="upcoming-count">{visibleUpcomingMovies.length} film{visibleUpcomingMovies.length !== 1 ? "s" : ""} trouvé{visibleUpcomingMovies.length !== 1 ? "s" : ""}{upcomingStartDate && upcomingEndDate && ` du ${rangeDateLabel(upcomingStartDate)} au ${rangeDateLabel(upcomingEndDate)}`}{upcomingNationality && ` · ${upcomingNationality === "france" ? "France" : "Hors France"}`}{normalizedMovieSearch && ` · « ${movieSearch.trim()} »`}{upcomingError && " · programme enregistré affiché"}</p>
+            <p className="upcoming-count">{visibleUpcomingMovies.length} film{visibleUpcomingMovies.length !== 1 ? "s" : ""} trouvé{visibleUpcomingMovies.length !== 1 ? "s" : ""}{upcomingStartDate && upcomingEndDate && ` du ${rangeDateLabel(upcomingStartDate)} au ${rangeDateLabel(upcomingEndDate)}`}{upcomingNationality && ` · ${upcomingNationality === "france" ? "France" : "Hors France"}`}{upcomingLanguage && ` · ${languageLabel(upcomingLanguage)}`}{normalizedMovieSearch && ` · « ${movieSearch.trim()} »`}{upcomingError && " · programme enregistré affiché"}</p>
             {visibleUpcomingMovies.length ? <div className="movie-grid">
               {visibleUpcomingMovies.map((movie) => (
                 <button className={movie.slug === upcomingMovieSlug ? "selected" : ""} key={movie.slug} onClick={() => selectUpcomingMovie(movie.slug)}>
@@ -591,6 +618,7 @@ export default function Home() {
                     <strong>{movie.title}</strong>
                     <small>{[durationLabel(movie.duration), movie.genres[0]].filter(Boolean).join(" · ") || "Film"}</small>
                     {movie.nationality && <small className="nationality">{movie.nationality}</small>}
+                    {movie.originalLanguage && <small className="language">Langue originale : {languageLabel(movie.originalLanguage)}</small>}
                     {movie.releaseDate && <small className="release-date">Sortie le {releaseDateLabel(movie.releaseDate)}</small>}
                     <span>{movie.cinemas.length} cinéma{movie.cinemas.length !== 1 ? "s" : ""} à Paris <b>→</b></span>
                   </span>
@@ -603,7 +631,7 @@ export default function Home() {
         {upcomingMovie && (
           <div className="upcoming-detail" ref={upcomingDetailRef}>
             <div className="upcoming-title-row">
-              <div><span>FILM SÉLECTIONNÉ</span><h3>{upcomingMovie.title}</h3><p>{[upcomingMovie.nationality, upcomingMovie.releaseDate && `Sortie le ${releaseDateLabel(upcomingMovie.releaseDate)}`, durationLabel(upcomingMovie.duration), upcomingMovie.genres[0]].filter(Boolean).join(" · ")}</p></div>
+              <div><span>FILM SÉLECTIONNÉ</span><h3>{upcomingMovie.title}</h3><p>{[upcomingMovie.nationality, upcomingMovie.originalLanguage && `Langue originale : ${languageLabel(upcomingMovie.originalLanguage)}`, upcomingMovie.releaseDate && `Sortie le ${releaseDateLabel(upcomingMovie.releaseDate)}`, durationLabel(upcomingMovie.duration), upcomingMovie.genres[0]].filter(Boolean).join(" · ")}</p></div>
               <button onClick={() => selectUpcomingMovie("")} aria-label="Fermer le film sélectionné">Fermer ×</button>
             </div>
 

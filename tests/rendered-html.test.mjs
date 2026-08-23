@@ -37,12 +37,13 @@ test("server-renders the Place Libre loading state", async () => {
 });
 
 test("uses live date-specific Pathé data with a saved fallback", async () => {
-  const [page, route, upcomingRoute, api, cinemas] = await Promise.all([
+  const [page, route, upcomingRoute, api, cinemas, tmdb] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/upcoming/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/pathe-api.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/cinemas.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/tmdb.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /fetch\(`\/api\/pathe\?\$\{params\}`\)/);
@@ -70,7 +71,7 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(page, /<option value="france">France<\/option>/);
   assert.match(page, /<option value="outside-france">Hors France<\/option>/);
   assert.match(page, /upcomingNationality === "outside-france" && movie\.nationality !== "France"/);
-  assert.match(page, /UPCOMING_DATA_VERSION = "nationality-v1"/);
+  assert.match(page, /UPCOMING_DATA_VERSION = "tmdb-language-v1"/);
   assert.match(page, /fetch\(`\/api\/pathe\/upcoming\?data=\$\{UPCOMING_DATA_VERSION\}`\)/);
   assert.match(page, /type="date" value=\{upcomingStartDate\}/);
   assert.match(page, /type="date" value=\{upcomingEndDate\}/);
@@ -78,5 +79,12 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(page, /day <= upcomingEndDate/);
   assert.match(page, /visibleUpcomingMovies\.find\(\(movie\) => movie\.slug === upcomingMovieSlug\)/);
   assert.match(upcomingRoute, /`\/show\/\$\{encodeURIComponent\(movie\.slug\)\}`/);
-  assert.match(upcomingRoute, /detail\.nationality \?\? detail\.nationalityTracking/);
+  assert.match(upcomingRoute, /detail\?\.nationality \?\? detail\?\.nationalityTracking/);
+  assert.match(upcomingRoute, /matchTmdbMovie\(movie\.title, movie\.releaseDate\)/);
+  assert.match(upcomingRoute, /sources: \{ pathe: true, tmdb: isTmdbConfigured\(\) \}/);
+  assert.match(tmdb, /https:\/\/api\.themoviedb\.org\/3\/search\/movie/);
+  assert.match(tmdb, /TMDB_API_READ_TOKEN/);
+  assert.match(tmdb, /original_language/);
+  assert.match(page, /Langue originale · TMDB/);
+  assert.match(page, /movie\.originalLanguage === upcomingLanguage/);
 });
