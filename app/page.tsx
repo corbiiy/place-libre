@@ -172,11 +172,12 @@ export default function Home() {
   const film = films.find((item) => item.slug === filmSlug) ?? films[0] ?? null;
   const sessions = film ? filterSessions(film, vostOnly) : [];
   const upcomingDates = useMemo(() => [...new Set(upcomingMovies.flatMap((movie) => movie.cinemas.flatMap((cinema) => cinema.dates)))].sort(), [upcomingMovies]);
-  const upcomingNationalities = useMemo(() => [...new Set(upcomingMovies.map((movie) => movie.nationality).filter((nationality): nationality is string => Boolean(nationality)))].sort((a, b) => a.localeCompare(b, "fr")), [upcomingMovies]);
   const normalizedMovieSearch = normalizeSearch(movieSearch);
   const visibleUpcomingMovies = useMemo(() => upcomingMovies
     .filter((movie) => !normalizedMovieSearch || normalizeSearch(movie.title).includes(normalizedMovieSearch))
-    .filter((movie) => !upcomingNationality || movie.nationality === upcomingNationality)
+    .filter((movie) => !upcomingNationality
+      || (upcomingNationality === "france" && movie.nationality === "France")
+      || (upcomingNationality === "outside-france" && movie.nationality !== "France"))
     .map((movie) => ({
       ...movie,
       cinemas: movie.cinemas.map((cinema) => ({
@@ -558,8 +559,9 @@ export default function Home() {
             <label className="nationality-picker">
               <span>Nationalité du film</span>
               <select value={upcomingNationality} onChange={(event) => changeUpcomingNationality(event.target.value)} disabled={upcomingLoading}>
-                <option value="">{upcomingLoading ? "Chargement des nationalités…" : "Toutes les nationalités"}</option>
-                {upcomingNationalities.map((nationality) => <option key={nationality} value={nationality}>{nationality}</option>)}
+                <option value="">{upcomingLoading ? "Chargement des nationalités…" : "Tous les films"}</option>
+                <option value="france">France</option>
+                <option value="outside-france">Hors France</option>
               </select>
             </label>
             <div className="date-range" aria-label="Période de programmation">
@@ -580,7 +582,7 @@ export default function Home() {
           <div className="load-message"><span className="spinner" /> Analyse des films à venir…</div>
         ) : (
           <>
-            <p className="upcoming-count">{visibleUpcomingMovies.length} film{visibleUpcomingMovies.length !== 1 ? "s" : ""} trouvé{visibleUpcomingMovies.length !== 1 ? "s" : ""}{upcomingStartDate && upcomingEndDate && ` du ${rangeDateLabel(upcomingStartDate)} au ${rangeDateLabel(upcomingEndDate)}`}{upcomingNationality && ` · ${upcomingNationality}`}{normalizedMovieSearch && ` · « ${movieSearch.trim()} »`}{upcomingError && " · programme enregistré affiché"}</p>
+            <p className="upcoming-count">{visibleUpcomingMovies.length} film{visibleUpcomingMovies.length !== 1 ? "s" : ""} trouvé{visibleUpcomingMovies.length !== 1 ? "s" : ""}{upcomingStartDate && upcomingEndDate && ` du ${rangeDateLabel(upcomingStartDate)} au ${rangeDateLabel(upcomingEndDate)}`}{upcomingNationality && ` · ${upcomingNationality === "france" ? "France" : "Hors France"}`}{normalizedMovieSearch && ` · « ${movieSearch.trim()} »`}{upcomingError && " · programme enregistré affiché"}</p>
             {visibleUpcomingMovies.length ? <div className="movie-grid">
               {visibleUpcomingMovies.map((movie) => (
                 <button className={movie.slug === upcomingMovieSlug ? "selected" : ""} key={movie.slug} onClick={() => selectUpcomingMovie(movie.slug)}>
