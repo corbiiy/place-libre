@@ -75,6 +75,7 @@ const releaseDateLabel = (date: string | null) => date ? new Intl.DateTimeFormat
 const rangeDateLabel = (date: string) => new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric" }).format(new Date(`${date}T12:00:00`));
 const normalizeSearch = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("fr").trim();
 const programmeCache = new Map<string, { expiresAt: number; data: LiveProgramme }>();
+const UPCOMING_DATA_VERSION = "nationality-v1";
 const filterUpcomingCinemas = (movies: UpcomingMovie[]) => movies
   .map((movie) => ({ ...movie, cinemas: movie.cinemas.filter((cinema) => !isExcludedCinema(cinema.slug)).sort(compareCinemaRank) }))
   .filter((movie) => movie.cinemas.length > 0);
@@ -248,7 +249,7 @@ export default function Home() {
   useEffect(() => {
     void Promise.resolve().then(() => refreshProgramme(DEFAULT_CINEMA_SLUG, undefined, true));
 
-    fetch("/api/pathe/upcoming")
+    fetch(`/api/pathe/upcoming?data=${UPCOMING_DATA_VERSION}`)
       .then((response) => {
         if (!response.ok) throw new Error("Films à venir indisponibles");
         return response.json();
@@ -556,8 +557,8 @@ export default function Home() {
             </label>
             <label className="nationality-picker">
               <span>Nationalité du film</span>
-              <select value={upcomingNationality} onChange={(event) => changeUpcomingNationality(event.target.value)} disabled={!upcomingNationalities.length}>
-                <option value="">Toutes les nationalités</option>
+              <select value={upcomingNationality} onChange={(event) => changeUpcomingNationality(event.target.value)} disabled={upcomingLoading}>
+                <option value="">{upcomingLoading ? "Chargement des nationalités…" : "Toutes les nationalités"}</option>
                 {upcomingNationalities.map((nationality) => <option key={nationality} value={nationality}>{nationality}</option>)}
               </select>
             </label>

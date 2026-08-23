@@ -67,6 +67,8 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(page, /selectedMovie\?\.cinemas\.find\(\(cinema\) => cinema\.slug === DEFAULT_CINEMA_SLUG\)/);
   assert.match(page, /setUpcomingCinemaSlug\(defaultCinema\?\.slug \?\? ""\)/);
   assert.match(page, /Nationalité du film/);
+  assert.match(page, /UPCOMING_DATA_VERSION = "nationality-v1"/);
+  assert.match(page, /fetch\(`\/api\/pathe\/upcoming\?data=\$\{UPCOMING_DATA_VERSION\}`\)/);
   assert.match(page, /type="date" value=\{upcomingStartDate\}/);
   assert.match(page, /type="date" value=\{upcomingEndDate\}/);
   assert.match(page, /day >= upcomingStartDate/);
