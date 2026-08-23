@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { isExcludedCinema } from "../lib/cinemas";
+import { compareCinemaRank, DEFAULT_CINEMA_SLUG, isExcludedCinema } from "../lib/cinemas";
 
 type Session = {
   time: string;
@@ -75,7 +75,7 @@ const releaseDateLabel = (date: string | null) => date ? new Intl.DateTimeFormat
 const normalizeSearch = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("fr").trim();
 const programmeCache = new Map<string, { expiresAt: number; data: LiveProgramme }>();
 const filterUpcomingCinemas = (movies: UpcomingMovie[]) => movies
-  .map((movie) => ({ ...movie, cinemas: movie.cinemas.filter((cinema) => !isExcludedCinema(cinema.slug)) }))
+  .map((movie) => ({ ...movie, cinemas: movie.cinemas.filter((cinema) => !isExcludedCinema(cinema.slug)).sort(compareCinemaRank) }))
   .filter((movie) => movie.cinemas.length > 0);
 
 async function loadProgramme(slug: string, requestedDate?: string) {
@@ -125,7 +125,7 @@ function upcomingFromSchedule(schedule: Schedule): UpcomingMovie[] {
   });
   return [...movies.values()].map(({ cinemaMap, ...movie }) => ({
     ...movie,
-    cinemas: [...cinemaMap.values()].map((cinema) => ({ ...cinema, dates: cinema.dates.sort() })),
+    cinemas: [...cinemaMap.values()].map((cinema) => ({ ...cinema, dates: cinema.dates.sort() })).sort(compareCinemaRank),
   })).sort((a, b) => a.firstDate.localeCompare(b.firstDate) || a.title.localeCompare(b.title, "fr"));
 }
 
@@ -134,7 +134,7 @@ export default function Home() {
   const [loadError, setLoadError] = useState(false);
   const [refreshError, setRefreshError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [cinemaSlug, setCinemaSlug] = useState("cinema-pathe-alesia");
+  const [cinemaSlug, setCinemaSlug] = useState(DEFAULT_CINEMA_SLUG);
   const [date, setDate] = useState("");
   const [programmeDates, setProgrammeDates] = useState<string[]>([]);
   const [dayFilms, setDayFilms] = useState<Film[]>([]);
@@ -186,7 +186,7 @@ export default function Home() {
         syncedAt: data.syncedAt,
         source: "https://www.pathe.fr/",
         dates: data.dates,
-        cinemas: data.cinemas.filter((cinema) => !isExcludedCinema(cinema.slug)).map((cinema) => ({ ...cinema, days: {} })),
+        cinemas: data.cinemas.filter((cinema) => !isExcludedCinema(cinema.slug)).sort(compareCinemaRank).map((cinema) => ({ ...cinema, days: {} })),
       });
       setCinemaSlug(slug);
       setProgrammeDates(data.dates);
@@ -203,7 +203,7 @@ export default function Home() {
           const response = await fetch("/pathe-schedule.json");
           if (!response.ok) throw new Error("Programme indisponible");
           const data: Schedule = await response.json();
-          const filteredSchedule = { ...data, cinemas: data.cinemas.filter((cinema) => !isExcludedCinema(cinema.slug)) };
+          const filteredSchedule = { ...data, cinemas: data.cinemas.filter((cinema) => !isExcludedCinema(cinema.slug)).sort(compareCinemaRank) };
           const fallbackCinema = filteredSchedule.cinemas.find((item) => item.slug === slug) ?? filteredSchedule.cinemas[0];
           const fallbackDate = requestedDate && fallbackCinema.days[requestedDate] ? requestedDate : data.dates[0];
           const fallbackFilms = fallbackCinema.days[fallbackDate] ?? [];
@@ -230,7 +230,7 @@ export default function Home() {
   }
 
   useEffect(() => {
-    void Promise.resolve().then(() => refreshProgramme("cinema-pathe-alesia", undefined, true));
+    void Promise.resolve().then(() => refreshProgramme(DEFAULT_CINEMA_SLUG, undefined, true));
 
     fetch("/api/pathe/upcoming")
       .then((response) => {
@@ -330,8 +330,12 @@ export default function Home() {
 
   function selectUpcomingMovie(slug: string) {
     upcomingRequestIdRef.current += 1;
+    const selectedMovie = upcomingMovies.find((movie) => movie.slug === slug);
+    const defaultCinema = selectedMovie?.cinemas.find((cinema) => cinema.slug === DEFAULT_CINEMA_SLUG)
+      ?? selectedMovie?.cinemas[0]
+      ?? null;
     setUpcomingMovieSlug(slug);
-    setUpcomingCinemaSlug("");
+    setUpcomingCinemaSlug(defaultCinema?.slug ?? "");
     setUpcomingDate("");
     setUpcomingFilm(null);
     setUpcomingSeatMap(null);

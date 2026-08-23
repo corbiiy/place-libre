@@ -58,5 +58,11 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(cinemas, /cinema-pathe-aquaboulevard/);
   assert.match(cinemas, /cinema-la-geode/);
   assert.match(cinemas, /cinema-pathe-montparnos/);
+  assert.match(cinemas, /DEFAULT_CINEMA_SLUG = "cinema-pathe-alesia"/);
+  assert.match(cinemas, /CINEMA_TRAVEL_RANK/);
+  assert.match(cinemas, /compareCinemaRank/);
   assert.match(api, /!isExcludedCinema\(cinema\.slug\)/);
+  assert.match(api, /\.sort\(compareCinemaRank\)/);
+  assert.match(page, /selectedMovie\?\.cinemas\.find\(\(cinema\) => cinema\.slug === DEFAULT_CINEMA_SLUG\)/);
+  assert.match(page, /setUpcomingCinemaSlug\(defaultCinema\?\.slug \?\? ""\)/);
 });
