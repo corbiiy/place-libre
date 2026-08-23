@@ -10,6 +10,11 @@ type PatheShow = {
   releaseAt?: { FR_FR?: string };
 };
 
+type PatheShowDetail = {
+  nationality?: string;
+  nationalityTracking?: string;
+};
+
 type PatheProgramme = {
   shows?: Record<string, { days?: Record<string, unknown> }>;
 };
@@ -22,10 +27,23 @@ type AggregatedMovie = {
   poster: string | null;
   contentRating: string | null;
   releaseDate: string | null;
+  nationality: string | null;
   firstDate: string;
   lastDate: string;
   cinemas: Array<{ slug: string; name: string; district: string; dates: string[] }>;
 };
+
+async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T) => Promise<R>) {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await mapper(items[index]);
+    }
+  }));
+  return results;
+}
 
 export async function GET() {
   try {
@@ -59,6 +77,7 @@ export async function GET() {
           poster: show.posterPath?.md ?? show.posterPath?.lg ?? null,
           contentRating: show.contentRating?.description ?? null,
           releaseDate: show.releaseAt?.FR_FR ?? null,
+          nationality: null,
           firstDate: dates[0],
           lastDate: dates.at(-1),
           cinemas: [],
@@ -76,7 +95,15 @@ export async function GET() {
     });
 
     const result = [...movies.values()].sort((a, b) => a.firstDate.localeCompare(b.firstDate) || a.title.localeCompare(b.title, "fr"));
-    return Response.json({ syncedAt: new Date().toISOString(), movies: result }, {
+    const enrichedResult = await mapWithConcurrency(result, 12, async (movie) => {
+      try {
+        const detail = await getPatheJson<PatheShowDetail>(`/show/${encodeURIComponent(movie.slug)}`, 86_400_000);
+        return { ...movie, nationality: detail.nationality ?? detail.nationalityTracking ?? null };
+      } catch {
+        return movie;
+      }
+    });
+    return Response.json({ syncedAt: new Date().toISOString(), movies: enrichedResult }, {
       headers: { "Cache-Control": "public, max-age=300, s-maxage=1800, stale-while-revalidate=3600" },
     });
   } catch {

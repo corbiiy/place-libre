@@ -37,9 +37,10 @@ test("server-renders the Place Libre loading state", async () => {
 });
 
 test("uses live date-specific Pathé data with a saved fallback", async () => {
-  const [page, route, api, cinemas] = await Promise.all([
+  const [page, route, upcomingRoute, api, cinemas] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/pathe/upcoming/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/pathe-api.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/cinemas.ts", import.meta.url), "utf8"),
   ]);
@@ -65,4 +66,12 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(api, /\.sort\(compareCinemaRank\)/);
   assert.match(page, /selectedMovie\?\.cinemas\.find\(\(cinema\) => cinema\.slug === DEFAULT_CINEMA_SLUG\)/);
   assert.match(page, /setUpcomingCinemaSlug\(defaultCinema\?\.slug \?\? ""\)/);
+  assert.match(page, /Nationalité du film/);
+  assert.match(page, /type="date" value=\{upcomingStartDate\}/);
+  assert.match(page, /type="date" value=\{upcomingEndDate\}/);
+  assert.match(page, /day >= upcomingStartDate/);
+  assert.match(page, /day <= upcomingEndDate/);
+  assert.match(page, /visibleUpcomingMovies\.find\(\(movie\) => movie\.slug === upcomingMovieSlug\)/);
+  assert.match(upcomingRoute, /`\/show\/\$\{encodeURIComponent\(movie\.slug\)\}`/);
+  assert.match(upcomingRoute, /detail\.nationality \?\? detail\.nationalityTracking/);
 });
