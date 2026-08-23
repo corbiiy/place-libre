@@ -105,6 +105,13 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(page, /activePage === "programme"/);
   assert.match(page, /activePage === "upcoming"/);
   assert.match(page, /Pages de Place Libre/);
+  assert.match(page, /if \(page === "upcoming"\) void loadUpcomingCatalogue\(\)/);
+  assert.match(page, /\["#a-venir", "#films-a-venir"\]/);
+  assert.match(page, /url\.searchParams\.set\("pos", SEATING_POSITION\)/);
+  assert.match(page, /url\.searchParams\.delete\("token"\)/);
+  assert.match(page, /Fenêtre Pathé chargée/);
+  assert.match(page, /onLoad=\{\(\) => setSeatMapReady\(true\)\}/);
+  assert.match(page, /Capacité \{session\.capacity\}/);
   assert.doesNotMatch(page, /<span>01<\/span>\s*Programme officiel/);
   assert.doesNotMatch(page, /<span>03<\/span>\s*Films à venir/);
   assert.match(page, /Version française/);

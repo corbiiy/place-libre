@@ -11,11 +11,13 @@ type Session = {
   status: string;
   bookingUrl: string | null;
   auditorium: string | null;
+  capacity: number | null;
 };
 
 type SeatMapSelection = {
   url: string;
   time: string;
+  capacity: number | null;
 };
 
 type PageView = "programme" | "upcoming";
@@ -91,6 +93,23 @@ const languageLabel = (language: string | null) => {
 const normalizeSearch = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("fr").trim();
 const programmeCache = new Map<string, { expiresAt: number; data: LiveProgramme }>();
 const UPCOMING_DATA_VERSION = "tmdb-language-v1";
+const SEATING_POSITION = "c2VhdGluZw==";
+
+const bookingSeatUrl = (rawUrl: string) => {
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== "https:" || url.hostname !== "s.pathe.fr" || !/^\/fr\/V[A-Za-z0-9]+S\d+\/booking\/?$/.test(url.pathname)) return rawUrl;
+    url.searchParams.set("pos", SEATING_POSITION);
+    url.searchParams.delete("token");
+    return url.toString();
+  } catch {
+    return rawUrl;
+  }
+};
+
+const seatMapSelection = (session: Session): SeatMapSelection | null => session.bookingUrl
+  ? { url: bookingSeatUrl(session.bookingUrl), time: session.time, capacity: session.capacity }
+  : null;
 
 const filterUpcomingCinemas = (movies: UpcomingMovie[]) => movies
   .map((movie) => ({ ...movie, cinemas: movie.cinemas.filter((cinema) => !isExcludedCinema(cinema.slug)).sort(compareCinemaRank) }))
@@ -175,7 +194,7 @@ export default function Home() {
   const [upcomingLanguage, setUpcomingLanguage] = useState("");
   const [tmdbAvailable, setTmdbAvailable] = useState(false);
   const [movieSearch, setMovieSearch] = useState("");
-  const [upcomingLoading, setUpcomingLoading] = useState(true);
+  const [upcomingLoading, setUpcomingLoading] = useState(false);
   const [upcomingError, setUpcomingError] = useState(false);
   const [upcomingMovieSlug, setUpcomingMovieSlug] = useState("");
   const [upcomingCinemaSlug, setUpcomingCinemaSlug] = useState("");
@@ -183,16 +202,21 @@ export default function Home() {
   const [upcomingFilm, setUpcomingFilm] = useState<Film | null>(null);
   const [upcomingChecking, setUpcomingChecking] = useState(false);
   const [upcomingSeatMap, setUpcomingSeatMap] = useState<SeatMapSelection | null>(null);
+  const [seatMapReady, setSeatMapReady] = useState(false);
+  const [upcomingSeatMapReady, setUpcomingSeatMapReady] = useState(false);
   const resultsRef = useRef<HTMLElement>(null);
   const seatMapRef = useRef<HTMLDivElement>(null);
   const upcomingDetailRef = useRef<HTMLDivElement>(null);
   const upcomingMapRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0);
   const upcomingRequestIdRef = useRef(0);
+  const upcomingLoadStartedRef = useRef(false);
   const vostOnlyRef = useRef(true);
 
   function changePage(page: PageView) {
     setActivePage(page);
+    if (page === "upcoming") void loadUpcomingCatalogue();
+    window.history.replaceState(null, "", page === "upcoming" ? "#films-a-venir" : `${window.location.pathname}${window.location.search}`);
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
   }
 
@@ -247,7 +271,7 @@ export default function Home() {
       setSyncedAt(data.syncedAt);
       setFilmSlug(visibleFilms[0]?.slug ?? "");
       setChecked(false);
-      setSeatMap(null);
+      updateSeatMap(null);
     } catch {
       if (requestId !== requestIdRef.current) return;
       if (initial) {
@@ -284,26 +308,60 @@ export default function Home() {
     }
   }
 
-  useEffect(() => {
-    void Promise.resolve().then(() => refreshProgramme(DEFAULT_CINEMA_SLUG, undefined, true));
+  function applyUpcomingCatalogue(movies: UpcomingMovie[], hasTmdb: boolean) {
+    const filteredMovies = filterUpcomingCinemas(movies);
+    setUpcomingMovies(filteredMovies);
+    setTmdbAvailable(hasTmdb);
+    const dates = [...new Set(filteredMovies.flatMap((movie) => movie.cinemas.flatMap((venue) => venue.dates)))].sort();
+    const firstDate = dates[0] ?? "";
+    setUpcomingStartDate((current) => current || firstDate);
+    setUpcomingEndDate((current) => current || dates.filter((day) => day.startsWith(firstDate.slice(0, 7))).at(-1) || firstDate);
+  }
 
-    fetch(`/api/pathe/upcoming?data=${UPCOMING_DATA_VERSION}`)
-      .then((response) => {
-        if (!response.ok) throw new Error("Films à venir indisponibles");
-        return response.json();
-      })
-      .then((data: { movies: UpcomingMovie[]; sources?: { tmdb?: boolean } }) => {
-        const movies = filterUpcomingCinemas(data.movies);
-        setUpcomingMovies(movies);
-        setTmdbAvailable(Boolean(data.sources?.tmdb));
-        const dates = [...new Set(movies.flatMap((movie) => movie.cinemas.flatMap((venue) => venue.dates)))].sort();
-        const firstDate = dates[0] ?? "";
-        setUpcomingStartDate((current) => current || firstDate);
-        setUpcomingEndDate((current) => current || dates.filter((day) => day.startsWith(firstDate.slice(0, 7))).at(-1) || firstDate);
-      })
-      .catch(() => setUpcomingError(true))
-      .finally(() => setUpcomingLoading(false));
+  async function loadUpcomingCatalogue() {
+    if (upcomingLoadStartedRef.current) return;
+    upcomingLoadStartedRef.current = true;
+    setUpcomingLoading(true);
+    setUpcomingError(false);
+    try {
+      const response = await fetch(`/api/pathe/upcoming?data=${UPCOMING_DATA_VERSION}`);
+      if (!response.ok) throw new Error("Films à venir indisponibles");
+      const data: { movies: UpcomingMovie[]; sources?: { tmdb?: boolean } } = await response.json();
+      applyUpcomingCatalogue(data.movies, Boolean(data.sources?.tmdb));
+    } catch {
+      try {
+        const response = await fetch("/pathe-schedule.json");
+        if (!response.ok) throw new Error("Programme enregistré indisponible");
+        const data: Schedule = await response.json();
+        applyUpcomingCatalogue(upcomingFromSchedule(data), false);
+      } catch {
+        setUpcomingMovies([]);
+      }
+      setUpcomingError(true);
+    } finally {
+      setUpcomingLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void Promise.resolve().then(() => {
+      void refreshProgramme(DEFAULT_CINEMA_SLUG, undefined, true);
+      if (["#a-venir", "#films-a-venir"].includes(window.location.hash)) {
+        setActivePage("upcoming");
+        void loadUpcomingCatalogue();
+      }
+    });
   }, []);
+
+  function updateSeatMap(selection: SeatMapSelection | null) {
+    setSeatMapReady(false);
+    setSeatMap(selection);
+  }
+
+  function updateUpcomingSeatMap(selection: SeatMapSelection | null) {
+    setUpcomingSeatMapReady(false);
+    setUpcomingSeatMap(selection);
+  }
 
   function changeCinema(slug: string) {
     const nextCinema = schedule?.cinemas.find((item) => item.slug === slug);
@@ -315,7 +373,7 @@ export default function Home() {
     setDayFilms(fallbackFilms);
     setFilmSlug(filterFilms(fallbackFilms, vostOnly)[0]?.slug ?? "");
     setChecked(false);
-    setSeatMap(null);
+    updateSeatMap(null);
     void refreshProgramme(slug);
   }
 
@@ -325,29 +383,29 @@ export default function Home() {
     setDayFilms(fallbackFilms);
     setFilmSlug(filterFilms(fallbackFilms, vostOnly)[0]?.slug ?? "");
     setChecked(false);
-    setSeatMap(null);
+    updateSeatMap(null);
     void refreshProgramme(cinemaSlug, nextDate);
   }
 
   function showSessions() {
     if (!film) return;
     const onlySession = sessions.length === 1 ? sessions[0] : null;
-    const showMap = onlySession?.status === "available" && onlySession.bookingUrl;
+    const mapSelection = onlySession?.status === "available" ? seatMapSelection(onlySession) : null;
     setChecked(true);
-    setSeatMap(showMap ? { url: showMap, time: onlySession.time } : null);
-    window.setTimeout(() => (showMap ? seatMapRef : resultsRef).current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    updateSeatMap(mapSelection);
+    window.setTimeout(() => (mapSelection ? seatMapRef : resultsRef).current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   }
 
   function selectFilm(slug: string) {
     const selectedFilm = films.find((item) => item.slug === slug);
     const selectedSessions = selectedFilm ? filterSessions(selectedFilm, vostOnly) : [];
     const onlySession = selectedSessions.length === 1 ? selectedSessions[0] : null;
-    const showMap = onlySession?.status === "available" && onlySession.bookingUrl;
+    const mapSelection = onlySession?.status === "available" ? seatMapSelection(onlySession) : null;
     setFilmSlug(slug);
     setChecked(Boolean(onlySession));
-    setSeatMap(showMap ? { url: showMap, time: onlySession.time } : null);
+    updateSeatMap(mapSelection);
     if (onlySession) {
-      window.setTimeout(() => (showMap ? seatMapRef : resultsRef).current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+      window.setTimeout(() => (mapSelection ? seatMapRef : resultsRef).current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
     }
   }
 
@@ -359,12 +417,13 @@ export default function Home() {
     setVostOnly(nextVostOnly);
     setFilmSlug(currentStillAvailable ? filmSlug : (nextFilms[0]?.slug ?? ""));
     setChecked(false);
-    setSeatMap(null);
+    updateSeatMap(null);
   }
 
   function openSeatMap(session: Session) {
-    if (!session.bookingUrl) return;
-    setSeatMap({ url: session.bookingUrl, time: session.time });
+    const selection = seatMapSelection(session);
+    if (!selection) return;
+    updateSeatMap(selection);
     window.setTimeout(() => seatMapRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   }
 
@@ -374,7 +433,7 @@ export default function Home() {
     setUpcomingCinemaSlug("");
     setUpcomingDate("");
     setUpcomingFilm(null);
-    setUpcomingSeatMap(null);
+    updateUpcomingSeatMap(null);
   }
 
   function changeUpcomingStartDate(nextDate: string) {
@@ -420,7 +479,7 @@ export default function Home() {
     setUpcomingCinemaSlug(defaultCinema?.slug ?? "");
     setUpcomingDate(onlyDate ?? "");
     setUpcomingFilm(null);
-    setUpcomingSeatMap(null);
+    updateUpcomingSeatMap(null);
     if (selectedMovie && defaultCinema && onlyDate) void loadUpcomingDate(selectedMovie, defaultCinema, onlyDate);
     window.setTimeout(() => upcomingDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   }
@@ -432,7 +491,7 @@ export default function Home() {
     setUpcomingCinemaSlug(slug);
     setUpcomingDate(onlyDate ?? "");
     setUpcomingFilm(null);
-    setUpcomingSeatMap(null);
+    updateUpcomingSeatMap(null);
     if (upcomingMovie && selectedCinema && onlyDate) void loadUpcomingDate(upcomingMovie, selectedCinema, onlyDate);
   }
 
@@ -446,16 +505,16 @@ export default function Home() {
     setUpcomingDate(day);
     setUpcomingChecking(true);
     setUpcomingFilm(null);
-    setUpcomingSeatMap(null);
+    updateUpcomingSeatMap(null);
     try {
       const data = await loadProgramme(cinema.slug, day);
       if (requestId !== upcomingRequestIdRef.current) return;
       const selectedFilm = data.films.find((item) => item.slug === movie.slug) ?? null;
       setUpcomingFilm(selectedFilm);
       const onlySession = selectedFilm?.sessions.length === 1 ? selectedFilm.sessions[0] : null;
-      const showMap = onlySession?.status === "available" && onlySession.bookingUrl;
-      setUpcomingSeatMap(showMap ? { url: showMap, time: onlySession.time } : null);
-      window.setTimeout(() => (showMap ? upcomingMapRef : upcomingDetailRef).current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+      const mapSelection = onlySession?.status === "available" ? seatMapSelection(onlySession) : null;
+      updateUpcomingSeatMap(mapSelection);
+      window.setTimeout(() => (mapSelection ? upcomingMapRef : upcomingDetailRef).current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     } catch {
       if (requestId !== upcomingRequestIdRef.current) return;
       const fallbackCinema = schedule?.cinemas.find((item) => item.slug === cinema.slug);
@@ -467,8 +526,9 @@ export default function Home() {
   }
 
   function openUpcomingSeatMap(session: Session) {
-    if (!session.bookingUrl || !upcomingCinema) return;
-    setUpcomingSeatMap({ url: session.bookingUrl, time: session.time });
+    const selection = seatMapSelection(session);
+    if (!selection || !upcomingCinema) return;
+    updateUpcomingSeatMap(selection);
     window.setTimeout(() => upcomingMapRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   }
 
@@ -571,6 +631,7 @@ export default function Home() {
                       <span className={`version-badge${isVf(session) ? " is-vf" : ""}`} aria-label={isVf(session) ? "Version française" : undefined}>{session.version}</span>
                       {tags.map((tag) => <span key={tag}>{tag.toUpperCase()}</span>)}
                       {session.auditorium && <span>Salle {session.auditorium}</span>}
+                      {session.capacity && <span>Capacité {session.capacity}</span>}
                     </div>
                     <div className={`seat-answer ${bookingOpen ? "pending" : "no"}`}>
                       <strong>{bookingOpen ? "À VÉRIFIER" : "COMPLET"}</strong>
@@ -592,13 +653,14 @@ export default function Home() {
           {seatMap && (
             <div className="embedded-seat-map" ref={seatMapRef}>
               <div className="map-toolbar">
-                <div><span>PLAN OFFICIEL PATHÉ</span><strong>{film.title} · {seatMap.time}</strong><em>Ignorez les emplacements PMR : ils ne comptent pas comme fauteuils standards disponibles.</em></div>
+                <div><span>PLAN OFFICIEL PATHÉ</span><strong>{film.title} · {seatMap.time}</strong><em>{seatMap.capacity ? `Salle de ${seatMap.capacity} places. ` : ""}Le compteur Pathé peut inclure des emplacements PMR : vérifiez les fauteuils standards directement sur le plan.</em></div>
                 <div className="map-actions">
                   <a href={seatMap.url} target="_blank" rel="noreferrer">Ouvrir sur Pathé ↗</a>
-                  <button onClick={() => setSeatMap(null)} aria-label="Fermer le plan des sièges">Fermer ×</button>
+                  <button onClick={() => updateSeatMap(null)} aria-label="Fermer le plan des sièges">Fermer ×</button>
                 </div>
               </div>
-              <iframe src={seatMap.url} title={`Plan des sièges Pathé pour ${film.title} à ${seatMap.time}`} />
+              <div className={`map-load-status ${seatMapReady ? "ready" : ""}`} aria-live="polite"><i />{seatMapReady ? "Fenêtre Pathé chargée — le nombre exact et les fauteuils libres apparaissent ci-dessous." : "Chargement du plan Pathé en direct…"}</div>
+              <iframe key={seatMap.url} src={seatMap.url} title={`Plan des sièges Pathé pour ${film.title} à ${seatMap.time}`} onLoad={() => setSeatMapReady(true)} loading="eager" referrerPolicy="origin-when-cross-origin" />
             </div>
           )}
 
@@ -733,7 +795,7 @@ export default function Home() {
                         return (
                           <article className={`session-card ${bookingOpen ? "has-seats" : "sold-out"}`} key={`${session.time}-${index}`}>
                             <div className="session-time"><strong>{session.time}</strong>{session.endTime && <span>fin {session.endTime}</span>}</div>
-                            <div className="session-meta"><span className={`version-badge${isVf(session) ? " is-vf" : ""}`} aria-label={isVf(session) ? "Version française" : undefined}>{session.version}</span>{usefulTags(session.tags).map((tag) => <span key={tag}>{tag.toUpperCase()}</span>)}{session.auditorium && <span>Salle {session.auditorium}</span>}</div>
+                            <div className="session-meta"><span className={`version-badge${isVf(session) ? " is-vf" : ""}`} aria-label={isVf(session) ? "Version française" : undefined}>{session.version}</span>{usefulTags(session.tags).map((tag) => <span key={tag}>{tag.toUpperCase()}</span>)}{session.auditorium && <span>Salle {session.auditorium}</span>}{session.capacity && <span>Capacité {session.capacity}</span>}</div>
                             <div className={`seat-answer ${bookingOpen ? "pending" : "no"}`}><strong>{bookingOpen ? "À VÉRIFIER" : "COMPLET"}</strong><span>{bookingOpen ? "Place standard non confirmée" : "Aucune place disponible"}</span></div>
                             {available ? <button className="seat-map-button" onClick={() => openUpcomingSeatMap(session)}>Voir le plan officiel <span>↓</span></button> : <span className="disabled-booking">{bookingOpen ? "Plan indisponible" : "Séance complète"}</span>}
                           </article>
@@ -748,10 +810,11 @@ export default function Home() {
                 {upcomingSeatMap && (
                   <div className="embedded-seat-map" ref={upcomingMapRef}>
                     <div className="map-toolbar">
-                      <div><span>PLAN OFFICIEL PATHÉ</span><strong>{upcomingMovie.title} · {upcomingSeatMap.time}</strong><em>Ignorez les emplacements PMR : ils ne comptent pas comme fauteuils standards disponibles.</em></div>
-                      <div className="map-actions"><a href={upcomingSeatMap.url} target="_blank" rel="noreferrer">Ouvrir sur Pathé ↗</a><button onClick={() => setUpcomingSeatMap(null)}>Fermer ×</button></div>
+                      <div><span>PLAN OFFICIEL PATHÉ</span><strong>{upcomingMovie.title} · {upcomingSeatMap.time}</strong><em>{upcomingSeatMap.capacity ? `Salle de ${upcomingSeatMap.capacity} places. ` : ""}Le compteur Pathé peut inclure des emplacements PMR : vérifiez les fauteuils standards directement sur le plan.</em></div>
+                      <div className="map-actions"><a href={upcomingSeatMap.url} target="_blank" rel="noreferrer">Ouvrir sur Pathé ↗</a><button onClick={() => updateUpcomingSeatMap(null)}>Fermer ×</button></div>
                     </div>
-                    <iframe src={upcomingSeatMap.url} title={`Plan des sièges Pathé pour ${upcomingMovie.title} à ${upcomingSeatMap.time}`} />
+                    <div className={`map-load-status ${upcomingSeatMapReady ? "ready" : ""}`} aria-live="polite"><i />{upcomingSeatMapReady ? "Fenêtre Pathé chargée — le nombre exact et les fauteuils libres apparaissent ci-dessous." : "Chargement du plan Pathé en direct…"}</div>
+                    <iframe key={upcomingSeatMap.url} src={upcomingSeatMap.url} title={`Plan des sièges Pathé pour ${upcomingMovie.title} à ${upcomingSeatMap.time}`} onLoad={() => setUpcomingSeatMapReady(true)} loading="eager" referrerPolicy="origin-when-cross-origin" />
                   </div>
                 )}
               </div>
