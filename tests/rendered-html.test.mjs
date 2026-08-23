@@ -32,21 +32,19 @@ test("server-renders the Place Libre loading state", async () => {
   assert.match(html, /<title>Place Libre — vérifiez les places de cinéma<\/title>/i);
   assert.match(html, /Le bon film\./);
   assert.match(html, /Chargement du programme Pathé/);
-  assert.match(html, /Analyse des films à venir/);
+  assert.match(html, /Programme officiel/);
+  assert.match(html, /Films à venir/);
   assert.match(html, /données Pathé/);
 });
 
 test("uses live date-specific Pathé data with a saved fallback", async () => {
-  const [page, route, upcomingRoute, api, cinemas, tmdb, seatAnalysis, helperScanner, helperBuild] = await Promise.all([
+  const [page, route, upcomingRoute, api, cinemas, tmdb] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/upcoming/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/pathe-api.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/cinemas.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/tmdb.ts", import.meta.url), "utf8"),
-    readFile(new URL("../lib/seat-analysis.ts", import.meta.url), "utf8"),
-    readFile(new URL("../helper/scanner.js", import.meta.url), "utf8"),
-    readFile(new URL("../helper/build-helper.sh", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /fetch\(`\/api\/pathe\?\$\{params\}`, \{ signal: controller\.signal \}\)/);
@@ -102,20 +100,10 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(page, /selectedCinema\?\.dates\.length === 1 \? selectedCinema\.dates\[0\] : null/);
   assert.match(page, /loadUpcomingDate\(selectedMovie, defaultCinema, onlyDate\)/);
   assert.match(page, /loadUpcomingDate\(upcomingMovie, selectedCinema, onlyDate\)/);
-  assert.match(page, /place-libre-seat-scan/);
-  assert.match(page, /bookingIdentifiers\(selection\.url\)/);
-  assert.match(page, /isLiveSeatScan\(detail\)/);
-  assert.match(page, /Plan \+ analyse exacte/);
-  assert.match(page, /<ExactSeatAnalysis selection=\{seatMap\}/);
-  assert.match(page, /<ExactSeatAnalysis selection=\{upcomingSeatMap\}/);
-  assert.match(page, /Analyse exacte après chargement/);
-  assert.match(page, /Analyser les meilleures places/);
-  assert.match(page, /place-libre-helper\.zip/);
-  assert.match(page, /Nombre de places/);
-  assert.match(page, /PMR\/accompagnant exclue/);
-  assert.match(seatAnalysis, /DIS\|PMR\|PFR\|WHEEL\|COMP\|ACCOMP/);
-  assert.match(seatAnalysis, /recommendations: candidates\.sort/);
-  assert.match(helperScanner, /getAttribute\("xlink:href"\)/);
-  assert.match(helperScanner, /data-seattypecode/);
-  assert.match(helperBuild, /placelibrehelper/);
+  assert.match(page, /type PageView = "programme" \| "upcoming"/);
+  assert.match(page, /activePage === "programme"/);
+  assert.match(page, /activePage === "upcoming"/);
+  assert.match(page, /Pages de Place Libre/);
+  assert.match(page, /Voir le plan officiel/);
+  assert.doesNotMatch(page, /ExactSeatAnalysis|placelibrehelper|analyse exacte|helper Safari/i);
 });
