@@ -91,6 +91,18 @@ const languageLabel = (language: string | null) => {
   return label.charAt(0).toUpperCase() + label.slice(1);
 };
 const normalizeSearch = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("fr").trim();
+const compareReleaseDate = (left: UpcomingMovie, right: UpcomingMovie) => {
+  if (left.releaseDate && right.releaseDate) {
+    const dateOrder = left.releaseDate.localeCompare(right.releaseDate);
+    if (dateOrder !== 0) return dateOrder;
+  } else if (left.releaseDate) {
+    return -1;
+  } else if (right.releaseDate) {
+    return 1;
+  }
+
+  return left.title.localeCompare(right.title, "fr");
+};
 const programmeCache = new Map<string, { expiresAt: number; data: LiveProgramme }>();
 const UPCOMING_DATA_VERSION = "tmdb-language-v1";
 const SEATING_POSITION = "c2VhdGluZw==";
@@ -233,20 +245,24 @@ export default function Home() {
   const upcomingCinemaFilterName = upcomingCinemaOptions.find((cinema) => cinema.slug === upcomingCinemaFilter)?.name ?? "";
   const upcomingLanguages = useMemo(() => [...new Set(upcomingMovies.map((movie) => movie.originalLanguage).filter((language): language is string => Boolean(language)))].sort((a, b) => (languageLabel(a) ?? a).localeCompare(languageLabel(b) ?? b, "fr")), [upcomingMovies]);
   const normalizedMovieSearch = normalizeSearch(movieSearch);
-  const visibleUpcomingMovies = useMemo(() => upcomingMovies
-    .filter((movie) => !normalizedMovieSearch || normalizeSearch(movie.title).includes(normalizedMovieSearch))
-    .filter((movie) => !upcomingNationality
-      || (upcomingNationality === "france" && movie.nationality === "France")
-      || (upcomingNationality === "outside-france" && movie.nationality !== "France"))
-    .filter((movie) => !upcomingLanguage || movie.originalLanguage === upcomingLanguage)
-    .map((movie) => ({
-      ...movie,
-      cinemas: movie.cinemas.filter((cinema) => !upcomingCinemaFilter || cinema.slug === upcomingCinemaFilter).map((cinema) => ({
-        ...cinema,
-        dates: cinema.dates.filter((day) => (!upcomingStartDate || day >= upcomingStartDate) && (!upcomingEndDate || day <= upcomingEndDate)),
-      })).filter((cinema) => cinema.dates.length > 0),
-    }))
-    .filter((movie) => movie.cinemas.length > 0), [upcomingMovies, normalizedMovieSearch, upcomingCinemaFilter, upcomingNationality, upcomingLanguage, upcomingStartDate, upcomingEndDate]);
+  const visibleUpcomingMovies = useMemo(() => {
+    const movies = upcomingMovies
+      .filter((movie) => !normalizedMovieSearch || normalizeSearch(movie.title).includes(normalizedMovieSearch))
+      .filter((movie) => !upcomingNationality
+        || (upcomingNationality === "france" && movie.nationality === "France")
+        || (upcomingNationality === "outside-france" && movie.nationality !== "France"))
+      .filter((movie) => !upcomingLanguage || movie.originalLanguage === upcomingLanguage)
+      .map((movie) => ({
+        ...movie,
+        cinemas: movie.cinemas.filter((cinema) => !upcomingCinemaFilter || cinema.slug === upcomingCinemaFilter).map((cinema) => ({
+          ...cinema,
+          dates: cinema.dates.filter((day) => (!upcomingStartDate || day >= upcomingStartDate) && (!upcomingEndDate || day <= upcomingEndDate)),
+        })).filter((cinema) => cinema.dates.length > 0),
+      }))
+      .filter((movie) => movie.cinemas.length > 0);
+
+    return normalizedMovieSearch ? movies.sort(compareReleaseDate) : movies;
+  }, [upcomingMovies, normalizedMovieSearch, upcomingCinemaFilter, upcomingNationality, upcomingLanguage, upcomingStartDate, upcomingEndDate]);
   const upcomingMovie = visibleUpcomingMovies.find((movie) => movie.slug === upcomingMovieSlug) ?? null;
   const upcomingCinema = upcomingMovie?.cinemas.find((cinema) => cinema.slug === upcomingCinemaSlug) ?? null;
 

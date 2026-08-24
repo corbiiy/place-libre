@@ -61,6 +61,8 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(upcomingRoute, /mapWithConcurrency\(result, 4/);
   assert.match(page, /Rechercher un film/);
   assert.match(page, /releaseDateLabel/);
+  assert.match(page, /left\.releaseDate\.localeCompare\(right\.releaseDate\)/);
+  assert.match(page, /normalizedMovieSearch \? movies\.sort\(compareReleaseDate\) : movies/);
   assert.match(route, /releaseDate: show\.releaseAt\?\.FR_FR/);
   assert.match(cinemas, /cinema-pathe-aquaboulevard/);
   assert.match(cinemas, /cinema-la-geode/);
