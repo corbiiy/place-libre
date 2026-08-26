@@ -119,6 +119,17 @@ const bookingSeatUrl = (rawUrl: string) => {
   }
 };
 
+const reloadedSeatMapUrl = (rawUrl: string, attempt: number) => {
+  if (attempt === 0) return rawUrl;
+  try {
+    const url = new URL(rawUrl);
+    url.searchParams.set("place_libre_reload", String(attempt));
+    return url.toString();
+  } catch {
+    return rawUrl;
+  }
+};
+
 const seatMapSelection = (session: Session): SeatMapSelection | null => session.bookingUrl
   ? { url: bookingSeatUrl(session.bookingUrl), time: session.time, capacity: session.capacity }
   : null;
@@ -216,6 +227,8 @@ export default function Home() {
   const [upcomingSeatMap, setUpcomingSeatMap] = useState<SeatMapSelection | null>(null);
   const [seatMapReady, setSeatMapReady] = useState(false);
   const [upcomingSeatMapReady, setUpcomingSeatMapReady] = useState(false);
+  const [seatMapReload, setSeatMapReload] = useState(0);
+  const [upcomingSeatMapReload, setUpcomingSeatMapReload] = useState(0);
   const resultsRef = useRef<HTMLElement>(null);
   const seatMapRef = useRef<HTMLDivElement>(null);
   const upcomingDetailRef = useRef<HTMLDivElement>(null);
@@ -372,12 +385,24 @@ export default function Home() {
 
   function updateSeatMap(selection: SeatMapSelection | null) {
     setSeatMapReady(false);
+    setSeatMapReload(0);
     setSeatMap(selection);
   }
 
   function updateUpcomingSeatMap(selection: SeatMapSelection | null) {
     setUpcomingSeatMapReady(false);
+    setUpcomingSeatMapReload(0);
     setUpcomingSeatMap(selection);
+  }
+
+  function reloadSeatMap() {
+    setSeatMapReady(false);
+    setSeatMapReload((attempt) => attempt + 1);
+  }
+
+  function reloadUpcomingSeatMap() {
+    setUpcomingSeatMapReady(false);
+    setUpcomingSeatMapReload((attempt) => attempt + 1);
   }
 
   function changeCinema(slug: string) {
@@ -673,11 +698,12 @@ export default function Home() {
                 <div><span>PLAN OFFICIEL PATHÉ</span><strong>{film.title} · {seatMap.time}</strong><em>{seatMap.capacity ? `Salle de ${seatMap.capacity} places. ` : ""}Le compteur Pathé peut inclure des emplacements PMR : vérifiez les fauteuils standards directement sur le plan.</em></div>
                 <div className="map-actions">
                   <a href={seatMap.url} target="_blank" rel="noreferrer">Ouvrir sur Pathé ↗</a>
+                  <button onClick={reloadSeatMap}>Recharger le plan</button>
                   <button onClick={() => updateSeatMap(null)} aria-label="Fermer le plan des sièges">Fermer ×</button>
                 </div>
               </div>
-              <div className={`map-load-status ${seatMapReady ? "ready" : ""}`} aria-live="polite"><i />{seatMapReady ? "Fenêtre Pathé chargée — le nombre exact et les fauteuils libres apparaissent ci-dessous." : "Chargement du plan Pathé en direct…"}</div>
-              <iframe key={seatMap.url} src={seatMap.url} title={`Plan des sièges Pathé pour ${film.title} à ${seatMap.time}`} onLoad={() => setSeatMapReady(true)} loading="eager" referrerPolicy="origin-when-cross-origin" />
+              <div className="map-load-status" aria-live="polite"><i />{seatMapReady ? "Réponse de Pathé reçue. Si le plan reste blanc, utilisez « Recharger le plan »." : "Chargement du plan Pathé en direct…"}</div>
+              <iframe key={`${seatMap.url}:${seatMapReload}`} src={reloadedSeatMapUrl(seatMap.url, seatMapReload)} title={`Plan des sièges Pathé pour ${film.title} à ${seatMap.time}`} onLoad={() => setSeatMapReady(true)} loading="eager" referrerPolicy="origin-when-cross-origin" />
             </div>
           )}
 
@@ -828,10 +854,10 @@ export default function Home() {
                   <div className="embedded-seat-map" ref={upcomingMapRef}>
                     <div className="map-toolbar">
                       <div><span>PLAN OFFICIEL PATHÉ</span><strong>{upcomingMovie.title} · {upcomingSeatMap.time}</strong><em>{upcomingSeatMap.capacity ? `Salle de ${upcomingSeatMap.capacity} places. ` : ""}Le compteur Pathé peut inclure des emplacements PMR : vérifiez les fauteuils standards directement sur le plan.</em></div>
-                      <div className="map-actions"><a href={upcomingSeatMap.url} target="_blank" rel="noreferrer">Ouvrir sur Pathé ↗</a><button onClick={() => updateUpcomingSeatMap(null)}>Fermer ×</button></div>
+                      <div className="map-actions"><a href={upcomingSeatMap.url} target="_blank" rel="noreferrer">Ouvrir sur Pathé ↗</a><button onClick={reloadUpcomingSeatMap}>Recharger le plan</button><button onClick={() => updateUpcomingSeatMap(null)}>Fermer ×</button></div>
                     </div>
-                    <div className={`map-load-status ${upcomingSeatMapReady ? "ready" : ""}`} aria-live="polite"><i />{upcomingSeatMapReady ? "Fenêtre Pathé chargée — le nombre exact et les fauteuils libres apparaissent ci-dessous." : "Chargement du plan Pathé en direct…"}</div>
-                    <iframe key={upcomingSeatMap.url} src={upcomingSeatMap.url} title={`Plan des sièges Pathé pour ${upcomingMovie.title} à ${upcomingSeatMap.time}`} onLoad={() => setUpcomingSeatMapReady(true)} loading="eager" referrerPolicy="origin-when-cross-origin" />
+                    <div className="map-load-status" aria-live="polite"><i />{upcomingSeatMapReady ? "Réponse de Pathé reçue. Si le plan reste blanc, utilisez « Recharger le plan »." : "Chargement du plan Pathé en direct…"}</div>
+                    <iframe key={`${upcomingSeatMap.url}:${upcomingSeatMapReload}`} src={reloadedSeatMapUrl(upcomingSeatMap.url, upcomingSeatMapReload)} title={`Plan des sièges Pathé pour ${upcomingMovie.title} à ${upcomingSeatMap.time}`} onLoad={() => setUpcomingSeatMapReady(true)} loading="eager" referrerPolicy="origin-when-cross-origin" />
                   </div>
                 )}
               </div>
