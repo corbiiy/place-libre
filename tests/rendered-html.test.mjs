@@ -58,7 +58,7 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.doesNotMatch(api, /pendingRequests/);
   assert.match(api, /responseCache/);
   assert.doesNotMatch(tmdb, /Map<string, Promise/);
-  assert.match(upcomingRoute, /mapWithConcurrency\(result, 4/);
+  assert.match(upcomingRoute, /return mapWithConcurrency\(movies, 4/);
   assert.match(page, /Rechercher un film/);
   assert.match(page, /releaseDateLabel/);
   assert.match(page, /left\.releaseDate\.localeCompare\(right\.releaseDate\)/);
@@ -83,7 +83,7 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(page, /<option value="france">France<\/option>/);
   assert.match(page, /<option value="outside-france">Hors France<\/option>/);
   assert.match(page, /upcomingNationality === "outside-france" && movie\.nationality !== "France"/);
-  assert.match(page, /UPCOMING_DATA_VERSION = "tmdb-language-v1"/);
+  assert.match(page, /UPCOMING_DATA_VERSION = "tmdb-resilient-v2"/);
   assert.match(page, /fetch\(`\/api\/pathe\/upcoming\?data=\$\{UPCOMING_DATA_VERSION\}`\)/);
   assert.match(page, /type="date" value=\{upcomingStartDate\}/);
   assert.match(page, /type="date" value=\{upcomingEndDate\}/);
@@ -94,6 +94,10 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(upcomingRoute, /detail\?\.nationality \?\? detail\?\.nationalityTracking/);
   assert.match(upcomingRoute, /matchTmdbMovie\(movie\.title, movie\.releaseDate\)/);
   assert.match(upcomingRoute, /sources: \{ pathe: true, tmdb: isTmdbConfigured\(\) \}/);
+  assert.match(upcomingRoute, /upcomingFromSavedSchedule\(savedSchedule as SavedSchedule\)/);
+  assert.match(upcomingRoute, /sources: \{ pathe: false, tmdb: isTmdbConfigured\(\) \}/);
+  assert.match(upcomingRoute, /releaseDate: movie\.releaseDate \?\? tmdbMatch\?\.releaseDate \?\? null/);
+  assert.match(page, /setUpcomingError\(data\.sources\?\.pathe === false\)/);
   assert.match(tmdb, /https:\/\/api\.themoviedb\.org\/3\/search\/movie/);
   assert.match(tmdb, /TMDB_API_READ_TOKEN/);
   assert.match(tmdb, /original_language/);

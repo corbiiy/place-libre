@@ -104,7 +104,7 @@ const compareReleaseDate = (left: UpcomingMovie, right: UpcomingMovie) => {
   return left.title.localeCompare(right.title, "fr");
 };
 const programmeCache = new Map<string, { expiresAt: number; data: LiveProgramme }>();
-const UPCOMING_DATA_VERSION = "tmdb-language-v1";
+const UPCOMING_DATA_VERSION = "tmdb-resilient-v2";
 const SEATING_POSITION = "c2VhdGluZw==";
 
 const bookingSeatUrl = (rawUrl: string) => {
@@ -342,8 +342,9 @@ export default function Home() {
     try {
       const response = await fetch(`/api/pathe/upcoming?data=${UPCOMING_DATA_VERSION}`);
       if (!response.ok) throw new Error("Films à venir indisponibles");
-      const data: { movies: UpcomingMovie[]; sources?: { tmdb?: boolean } } = await response.json();
+      const data: { movies: UpcomingMovie[]; sources?: { pathe?: boolean; tmdb?: boolean } } = await response.json();
       applyUpcomingCatalogue(data.movies, Boolean(data.sources?.tmdb));
+      setUpcomingError(data.sources?.pathe === false);
     } catch {
       try {
         const response = await fetch("/pathe-schedule.json");

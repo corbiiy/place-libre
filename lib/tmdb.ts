@@ -15,6 +15,7 @@ type TmdbSearchResponse = {
 export type TmdbMatch = {
   id: number;
   originalLanguage: string;
+  releaseDate: string | null;
 };
 
 const matchCache = new Map<string, { expiresAt: number; value: TmdbMatch | null }>();
@@ -104,7 +105,11 @@ export async function matchTmdbMovie(title: string, releaseDate: string | null):
   const best = candidates[0];
   const match = !best || best.score < 10 || !best.candidate.original_language
     ? null
-    : { id: best.candidate.id, originalLanguage: best.candidate.original_language };
+    : {
+      id: best.candidate.id,
+      originalLanguage: best.candidate.original_language,
+      releaseDate: best.candidate.release_date ?? null,
+    };
 
   matchCache.set(cacheKey, { expiresAt: Date.now() + 21_600_000, value: match });
   return match;
