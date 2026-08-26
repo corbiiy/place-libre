@@ -1,4 +1,4 @@
-import { getParisCinemas, getPatheJson } from "./pathe-api";
+import { getPatheJson, getSupportedCinemas } from "./pathe-api";
 import { isExcludedCinema } from "../../../lib/cinemas";
 
 type PatheShow = {
@@ -36,10 +36,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    const [programme, cataloguePayload, parisCinemas] = await Promise.all([
+    const [programme, cataloguePayload, supportedCinemas] = await Promise.all([
       getPatheJson<PatheProgramme>(`/cinema/${encodeURIComponent(cinemaSlug)}/shows`, 300_000),
       getPatheJson<{ shows?: PatheShow[] } | PatheShow[]>("/shows", 3_600_000),
-      getParisCinemas(),
+      getSupportedCinemas(),
     ]);
     const catalogueShows = Array.isArray(cataloguePayload) ? cataloguePayload : cataloguePayload.shows ?? [];
     const catalogue = new Map<string, PatheShow>(catalogueShows.map((show) => [show.slug, show]));
@@ -85,7 +85,7 @@ export async function GET(request: Request) {
       };
     }).sort((a, b) => a.title.localeCompare(b.title, "fr"));
 
-    const cinemas = parisCinemas.map((cinema) => ({
+    const cinemas = supportedCinemas.map((cinema) => ({
       slug: cinema.slug,
       name: cinema.name,
       district: cinema.theaters?.[0]?.addressZip ?? "Paris",

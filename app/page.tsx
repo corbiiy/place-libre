@@ -549,7 +549,7 @@ export default function Home() {
     window.setTimeout(() => upcomingMapRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   }
 
-  const sourcePage = cinema && date ? `${cinema.pageUrl}/filters/date-${date}` : "https://www.pathe.fr/cinemas/ville/paris";
+  const sourcePage = cinema && date ? `${cinema.pageUrl}/filters/date-${date}` : "https://www.pathe.fr/cinemas";
 
   return (
     <main>
@@ -568,7 +568,7 @@ export default function Home() {
       <section className="hero" id="top">
         <div className="eyebrow">Programme officiel</div>
         <h1>Le bon film.<br />La vraie séance.</h1>
-        <p className="lede">Choisissez un cinéma parisien et une date. Les films et horaires ci-dessous viennent directement du programme Pathé.</p>
+        <p className="lede">Choisissez un cinéma Pathé à Paris ou au Grand-Quevilly et une date. Les films et horaires ci-dessous viennent directement du programme Pathé.</p>
 
         {loadError ? (
           <div className="load-message error">Le programme Pathé n’a pas pu être chargé. <button onClick={() => window.location.reload()}>Réessayer</button></div>
@@ -578,7 +578,7 @@ export default function Home() {
           <>
             <div className="finder" aria-label="Recherche de séance">
               <label>
-                <span>1 · Cinéma à Paris</span>
+                <span>1 · Cinéma Pathé</span>
                 <select value={cinemaSlug} onChange={(event) => changeCinema(event.target.value)}>
                   {schedule.cinemas.map((item) => <option key={item.slug} value={item.slug}>{item.name} — {item.district}</option>)}
                 </select>
@@ -694,7 +694,7 @@ export default function Home() {
           <div>
             <div className="eyebrow">Films à venir</div>
             <h2>Choisissez d’abord<br />le film.</h2>
-            <p>Place Libre analyse le programme des cinémas Pathé à Paris et rassemble les dates annoncées pour les prochains mois.</p>
+            <p>Place Libre analyse le programme des cinémas Pathé à Paris et au Grand-Quevilly, puis rassemble les dates annoncées pour les prochains mois.</p>
           </div>
           <div className="upcoming-controls">
             <label className="movie-search">
@@ -752,7 +752,7 @@ export default function Home() {
                     {movie.nationality && <small className="nationality">{movie.nationality}</small>}
                     {movie.originalLanguage && <small className="language">Langue originale : {languageLabel(movie.originalLanguage)}</small>}
                     {movie.releaseDate && <small className="release-date">Sortie le {releaseDateLabel(movie.releaseDate)}</small>}
-                    <span>{movie.cinemas.length} cinéma{movie.cinemas.length !== 1 ? "s" : ""} à Paris <b>→</b></span>
+                    <span>{movie.cinemas.length} cinéma{movie.cinemas.length !== 1 ? "s" : ""} disponible{movie.cinemas.length !== 1 ? "s" : ""} <b>→</b></span>
                   </span>
                 </button>
               ))}
@@ -769,7 +769,7 @@ export default function Home() {
 
             <div className="upcoming-step">
               <span className="step-number">1</span>
-              <div><h4>Où le voir à Paris ?</h4><p>Choisissez un cinéma Pathé qui a annoncé ce film.</p></div>
+              <div><h4>Où le voir ?</h4><p>Choisissez un cinéma Pathé qui a annoncé ce film.</p></div>
             </div>
             <div className="cinema-options">
               {upcomingMovie.cinemas.map((venue) => (

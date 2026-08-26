@@ -1,4 +1,4 @@
-import { getParisCinemas, getPatheJson } from "../pathe-api";
+import { getPatheJson, getSupportedCinemas } from "../pathe-api";
 import { compareCinemaRank, isExcludedCinema } from "../../../../lib/cinemas";
 import { isTmdbConfigured, matchTmdbMovie } from "../../../../lib/tmdb";
 import savedSchedule from "../../../../public/pathe-schedule.json";
@@ -136,7 +136,7 @@ async function enrichMovies(movies: AggregatedMovie[], includePatheDetails: bool
 export async function GET() {
   try {
     const [cinemas, cataloguePayload] = await Promise.all([
-      getParisCinemas(),
+      getSupportedCinemas(),
       getPatheJson<{ shows?: PatheShow[] } | PatheShow[]>("/shows", 3_600_000),
     ]);
     const programmes = await Promise.all(cinemas.map(async (cinema) => {

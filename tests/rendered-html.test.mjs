@@ -38,7 +38,7 @@ test("server-renders the Place Libre loading state", async () => {
 });
 
 test("uses live date-specific Pathé data with a saved fallback", async () => {
-  const [page, styles, route, upcomingRoute, api, cinemas, tmdb] = await Promise.all([
+  const [page, styles, route, upcomingRoute, api, cinemas, tmdb, syncScript] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/route.ts", import.meta.url), "utf8"),
@@ -46,6 +46,7 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
     readFile(new URL("../app/api/pathe/pathe-api.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/cinemas.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/tmdb.ts", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/sync-pathe.mjs", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /fetch\(`\/api\/pathe\?\$\{params\}`, \{ signal: controller\.signal \}\)/);
@@ -54,7 +55,7 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(page, /programmeCache/);
   assert.doesNotMatch(page, /fetch\("\/pathe-schedule\.json"\)\s*\.then/);
   assert.match(route, /showtimes\/\$\{encodeURIComponent\(cinemaSlug\)\}\/\$\{date\}/);
-  assert.match(route, /getParisCinemas\(\)/);
+  assert.match(route, /getSupportedCinemas\(\)/);
   assert.doesNotMatch(api, /pendingRequests/);
   assert.match(api, /responseCache/);
   assert.doesNotMatch(tmdb, /Map<string, Promise/);
@@ -69,6 +70,10 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(cinemas, /cinema-pathe-montparnos/);
   assert.match(cinemas, /DEFAULT_CINEMA_SLUG = "cinema-pathe-alesia"/);
   assert.match(cinemas, /CINEMA_TRAVEL_RANK/);
+  assert.match(cinemas, /cinema-pathe-grand-quevilly/);
+  assert.match(cinemas, /isSupportedCinema/);
+  assert.match(syncScript, /cinema-pathe-grand-quevilly/);
+  assert.match(page, /Paris ou au Grand-Quevilly/);
   assert.match(cinemas, /compareCinemaRank/);
   assert.match(api, /!isExcludedCinema\(cinema\.slug\)/);
   assert.match(api, /\.sort\(compareCinemaRank\)/);

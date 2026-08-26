@@ -7,6 +7,7 @@ const headers = {
   Referer: "https://www.pathe.fr/",
   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
 };
+const INCLUDED_OUTSIDE_PARIS = new Set(["cinema-pathe-grand-quevilly"]);
 
 async function getJson(path) {
   const response = await fetch(`${API}${path}`, { headers });
@@ -15,7 +16,7 @@ async function getJson(path) {
 }
 
 const now = new Date();
-const parisToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(now);
+const localToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(now);
 
 async function mapLimit(items, limit, mapper) {
   const results = new Array(items.length);
@@ -31,19 +32,19 @@ async function mapLimit(items, limit, mapper) {
 
 const [allCinemas, cataloguePayload] = await Promise.all([getJson("/cinemas"), getJson("/shows")]);
 const catalogue = new Map((cataloguePayload.shows ?? cataloguePayload).map((show) => [show.slug, show]));
-const parisCinemas = allCinemas
-  .filter((cinema) => cinema.theaters?.some((theater) => theater.addressCity === "Paris"))
+const supportedCinemas = allCinemas
+  .filter((cinema) => cinema.theaters?.some((theater) => theater.addressCity === "Paris") || INCLUDED_OUTSIDE_PARIS.has(cinema.slug))
   .sort((a, b) => a.theaters[0].addressZip.localeCompare(b.theaters[0].addressZip) || a.name.localeCompare(b.name));
-const programmes = await Promise.all(parisCinemas.map((cinema) => getJson(`/cinema/${cinema.slug}/shows`)));
+const programmes = await Promise.all(supportedCinemas.map((cinema) => getJson(`/cinema/${cinema.slug}/shows`)));
 const dates = [...new Set(programmes.flatMap((programme) => Object.values(programme.shows ?? {}).flatMap((entry) => Object.keys(entry.days ?? {}))))]
-  .filter((date) => date >= parisToday)
+  .filter((date) => date >= localToday)
   .sort();
 
 const cinemas = [];
-for (const [cinemaIndex, cinema] of parisCinemas.entries()) {
+for (const [cinemaIndex, cinema] of supportedCinemas.entries()) {
   const programme = programmes[cinemaIndex];
   const selectedSlugs = Object.entries(programme.shows ?? {})
-    .filter(([, entry]) => Object.keys(entry.days ?? {}).some((date) => date >= parisToday))
+    .filter(([, entry]) => Object.keys(entry.days ?? {}).some((date) => date >= localToday))
     .map(([slug]) => slug);
 
   const showtimeEntries = await mapLimit(selectedSlugs, 6, async (slug) => {
@@ -70,6 +71,7 @@ for (const [cinemaIndex, cinema] of parisCinemas.entries()) {
         genres: show.genres ?? [],
         poster: show.posterPath?.md ?? show.posterPath?.lg ?? null,
         contentRating: show.contentRating?.description ?? null,
+        releaseDate: show.releaseAt?.FR_FR ?? null,
         sessions: sessions.map((session) => ({
           time: session.time.slice(11, 16),
           endTime: session.endTime?.slice(11, 16) ?? null,
@@ -102,4 +104,4 @@ const output = {
 };
 
 await writeFile(new URL("../public/pathe-schedule.json", import.meta.url), `${JSON.stringify(output)}\n`);
-console.log(`Saved ${cinemas.length} Paris cinemas, ${dates[0]} to ${dates.at(-1)}`);
+console.log(`Saved ${cinemas.length} supported cinemas, ${dates[0]} to ${dates.at(-1)}`);

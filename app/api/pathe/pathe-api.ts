@@ -1,4 +1,4 @@
-import { compareCinemaRank, isExcludedCinema } from "../../../lib/cinemas";
+import { compareCinemaRank, isExcludedCinema, isSupportedCinema } from "../../../lib/cinemas";
 
 export type PatheCinema = {
   slug: string;
@@ -27,9 +27,9 @@ export async function getPatheJson<T = unknown>(path: string, ttlMs = 300_000): 
   return value as T;
 }
 
-export async function getParisCinemas() {
+export async function getSupportedCinemas() {
   const allCinemas = await getPatheJson<PatheCinema[]>("/cinemas", 3_600_000);
   return allCinemas
-    .filter((cinema) => cinema.theaters?.some((theater) => theater.addressCity === "Paris") && !isExcludedCinema(cinema.slug))
+    .filter((cinema) => cinema.theaters?.some((theater) => isSupportedCinema(cinema.slug, theater.addressCity)) && !isExcludedCinema(cinema.slug))
     .sort(compareCinemaRank);
 }
