@@ -198,7 +198,7 @@ export async function GET() {
       sources: { pathe: false, tmdb: isTmdbConfigured() },
       movies: enrichedFallback,
     }, {
-      headers: { "Cache-Control": "public, max-age=300, s-maxage=1800, stale-while-revalidate=3600" },
+      headers: { "Cache-Control": "public, max-age=60, s-maxage=60, stale-while-revalidate=300" },
     });
   }
 }

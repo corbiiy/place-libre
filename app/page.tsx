@@ -104,7 +104,7 @@ const compareReleaseDate = (left: UpcomingMovie, right: UpcomingMovie) => {
   return left.title.localeCompare(right.title, "fr");
 };
 const programmeCache = new Map<string, { expiresAt: number; data: LiveProgramme }>();
-const UPCOMING_DATA_VERSION = "tmdb-resilient-v2";
+const UPCOMING_DATA_VERSION = "tmdb-grand-quevilly-v3";
 const SEATING_POSITION = "c2VhdGluZw==";
 
 const bookingSeatUrl = (rawUrl: string) => {

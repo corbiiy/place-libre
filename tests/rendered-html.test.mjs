@@ -88,7 +88,7 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(page, /<option value="france">France<\/option>/);
   assert.match(page, /<option value="outside-france">Hors France<\/option>/);
   assert.match(page, /upcomingNationality === "outside-france" && movie\.nationality !== "France"/);
-  assert.match(page, /UPCOMING_DATA_VERSION = "tmdb-resilient-v2"/);
+  assert.match(page, /UPCOMING_DATA_VERSION = "tmdb-grand-quevilly-v3"/);
   assert.match(page, /fetch\(`\/api\/pathe\/upcoming\?data=\$\{UPCOMING_DATA_VERSION\}`\)/);
   assert.match(page, /type="date" value=\{upcomingStartDate\}/);
   assert.match(page, /type="date" value=\{upcomingEndDate\}/);
@@ -101,6 +101,7 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(upcomingRoute, /sources: \{ pathe: true, tmdb: isTmdbConfigured\(\) \}/);
   assert.match(upcomingRoute, /upcomingFromSavedSchedule\(savedSchedule as SavedSchedule\)/);
   assert.match(upcomingRoute, /sources: \{ pathe: false, tmdb: isTmdbConfigured\(\) \}/);
+  assert.match(upcomingRoute, /max-age=60, s-maxage=60, stale-while-revalidate=300/);
   assert.match(upcomingRoute, /releaseDate: movie\.releaseDate \?\? tmdbMatch\?\.releaseDate \?\? null/);
   assert.match(page, /setUpcomingError\(data\.sources\?\.pathe === false\)/);
   assert.match(tmdb, /https:\/\/api\.themoviedb\.org\/3\/search\/movie/);
