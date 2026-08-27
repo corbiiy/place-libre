@@ -6,9 +6,10 @@ export const EXCLUDED_CINEMA_SLUGS = new Set([
 
 export const DEFAULT_CINEMA_SLUG = "cinema-pathe-alesia";
 export const GRAND_QUEVILLY_CINEMA_SLUG = "cinema-pathe-grand-quevilly";
+export const ODYSSEUM_CINEMA_SLUG = "cinema-pathe-odysseum";
 
 export const isSupportedCinema = (slug: string, city?: string) =>
-  city === "Paris" || slug === GRAND_QUEVILLY_CINEMA_SLUG;
+  city === "Paris" || slug === GRAND_QUEVILLY_CINEMA_SLUG || slug === ODYSSEUM_CINEMA_SLUG;
 
 export const CINEMA_TRAVEL_RANK = [
   "cinema-pathe-alesia",
@@ -22,6 +23,7 @@ export const CINEMA_TRAVEL_RANK = [
   "cinema-les-7-batignolles",
   "cinema-pathe-la-villette",
   GRAND_QUEVILLY_CINEMA_SLUG,
+  ODYSSEUM_CINEMA_SLUG,
 ] as const;
 
 const cinemaRank = new Map<string, number>(CINEMA_TRAVEL_RANK.map((slug, index) => [slug, index]));

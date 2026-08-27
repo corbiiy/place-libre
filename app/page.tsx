@@ -104,7 +104,7 @@ const compareReleaseDate = (left: UpcomingMovie, right: UpcomingMovie) => {
   return left.title.localeCompare(right.title, "fr");
 };
 const programmeCache = new Map<string, { expiresAt: number; data: LiveProgramme }>();
-const UPCOMING_DATA_VERSION = "tmdb-grand-quevilly-v3";
+const UPCOMING_DATA_VERSION = "tmdb-odysseum-v4";
 const SEATING_POSITION = "c2VhdGluZw==";
 
 const bookingSeatUrl = (rawUrl: string) => {
@@ -593,7 +593,7 @@ export default function Home() {
       <section className="hero" id="top">
         <div className="eyebrow">Programme officiel</div>
         <h1>Le bon film.<br />La vraie séance.</h1>
-        <p className="lede">Choisissez un cinéma Pathé à Paris ou au Grand-Quevilly et une date. Les films et horaires ci-dessous viennent directement du programme Pathé.</p>
+        <p className="lede">Choisissez un cinéma Pathé à Paris, au Grand-Quevilly ou à Montpellier et une date. Les films et horaires ci-dessous viennent directement du programme Pathé.</p>
 
         {loadError ? (
           <div className="load-message error">Le programme Pathé n’a pas pu être chargé. <button onClick={() => window.location.reload()}>Réessayer</button></div>
@@ -720,7 +720,7 @@ export default function Home() {
           <div>
             <div className="eyebrow">Films à venir</div>
             <h2>Choisissez d’abord<br />le film.</h2>
-            <p>Place Libre analyse le programme des cinémas Pathé à Paris et au Grand-Quevilly, puis rassemble les dates annoncées pour les prochains mois.</p>
+            <p>Place Libre analyse le programme des cinémas Pathé à Paris, au Grand-Quevilly et à Montpellier, puis rassemble les dates annoncées pour les prochains mois.</p>
           </div>
           <div className="upcoming-controls">
             <label className="movie-search">

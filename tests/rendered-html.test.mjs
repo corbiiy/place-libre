@@ -71,9 +71,11 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(cinemas, /DEFAULT_CINEMA_SLUG = "cinema-pathe-alesia"/);
   assert.match(cinemas, /CINEMA_TRAVEL_RANK/);
   assert.match(cinemas, /cinema-pathe-grand-quevilly/);
+  assert.match(cinemas, /cinema-pathe-odysseum/);
   assert.match(cinemas, /isSupportedCinema/);
   assert.match(syncScript, /cinema-pathe-grand-quevilly/);
-  assert.match(page, /Paris ou au Grand-Quevilly/);
+  assert.match(syncScript, /cinema-pathe-odysseum/);
+  assert.match(page, /Paris, au Grand-Quevilly ou à Montpellier/);
   assert.match(cinemas, /compareCinemaRank/);
   assert.match(api, /!isExcludedCinema\(cinema\.slug\)/);
   assert.match(api, /\.sort\(compareCinemaRank\)/);
@@ -88,7 +90,7 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(page, /<option value="france">France<\/option>/);
   assert.match(page, /<option value="outside-france">Hors France<\/option>/);
   assert.match(page, /upcomingNationality === "outside-france" && movie\.nationality !== "France"/);
-  assert.match(page, /UPCOMING_DATA_VERSION = "tmdb-grand-quevilly-v3"/);
+  assert.match(page, /UPCOMING_DATA_VERSION = "tmdb-odysseum-v4"/);
   assert.match(page, /fetch\(`\/api\/pathe\/upcoming\?data=\$\{UPCOMING_DATA_VERSION\}`\)/);
   assert.match(page, /type="date" value=\{upcomingStartDate\}/);
   assert.match(page, /type="date" value=\{upcomingEndDate\}/);

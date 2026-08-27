@@ -7,7 +7,7 @@ const headers = {
   Referer: "https://www.pathe.fr/",
   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
 };
-const INCLUDED_OUTSIDE_PARIS = new Set(["cinema-pathe-grand-quevilly"]);
+const INCLUDED_OUTSIDE_PARIS = new Set(["cinema-pathe-grand-quevilly", "cinema-pathe-odysseum"]);
 
 async function getJson(path) {
   const response = await fetch(`${API}${path}`, { headers });
