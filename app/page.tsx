@@ -104,7 +104,8 @@ const compareReleaseDate = (left: UpcomingMovie, right: UpcomingMovie) => {
   return left.title.localeCompare(right.title, "fr");
 };
 const programmeCache = new Map<string, { expiresAt: number; data: LiveProgramme }>();
-const UPCOMING_DATA_VERSION = "tmdb-odysseum-v4";
+const SAVED_SCHEDULE_VERSION = "odysseum-2026-08-27-v1";
+const UPCOMING_DATA_VERSION = "tmdb-odysseum-v5";
 const SEATING_POSITION = "c2VhdGluZw==";
 
 const bookingSeatUrl = (rawUrl: string) => {
@@ -305,7 +306,7 @@ export default function Home() {
       if (requestId !== requestIdRef.current) return;
       if (initial) {
         try {
-          const response = await fetch("/pathe-schedule.json");
+          const response = await fetch(`/pathe-schedule.json?data=${SAVED_SCHEDULE_VERSION}`);
           if (!response.ok) throw new Error("Programme indisponible");
           const data: Schedule = await response.json();
           const filteredSchedule = { ...data, cinemas: data.cinemas.filter((cinema) => !isExcludedCinema(cinema.slug)).sort(compareCinemaRank) };
@@ -360,7 +361,7 @@ export default function Home() {
       setUpcomingError(data.sources?.pathe === false);
     } catch {
       try {
-        const response = await fetch("/pathe-schedule.json");
+        const response = await fetch(`/pathe-schedule.json?data=${SAVED_SCHEDULE_VERSION}`);
         if (!response.ok) throw new Error("Programme enregistré indisponible");
         const data: Schedule = await response.json();
         applyUpcomingCatalogue(upcomingFromSchedule(data), false);

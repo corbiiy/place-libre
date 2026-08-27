@@ -38,7 +38,7 @@ test("server-renders the Place Libre loading state", async () => {
 });
 
 test("uses live date-specific Pathé data with a saved fallback", async () => {
-  const [page, styles, route, upcomingRoute, api, cinemas, tmdb, syncScript] = await Promise.all([
+  const [page, styles, route, upcomingRoute, api, cinemas, tmdb, syncScript, savedScheduleJson] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/route.ts", import.meta.url), "utf8"),
@@ -47,13 +47,17 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
     readFile(new URL("../lib/cinemas.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/tmdb.ts", import.meta.url), "utf8"),
     readFile(new URL("../scripts/sync-pathe.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../public/pathe-schedule.json", import.meta.url), "utf8"),
   ]);
+  const savedSchedule = JSON.parse(savedScheduleJson);
+  const savedOdysseum = savedSchedule.cinemas.find((cinema) => cinema.slug === "cinema-pathe-odysseum");
 
   assert.match(page, /fetch\(`\/api\/pathe\?\$\{params\}`, \{ signal: controller\.signal \}\)/);
   assert.match(page, /controller\.abort\(\), 15_000/);
-  assert.match(page, /fetch\("\/pathe-schedule\.json"\)/);
+  assert.match(page, /SAVED_SCHEDULE_VERSION = "odysseum-2026-08-27-v1"/);
+  assert.match(page, /fetch\(`\/pathe-schedule\.json\?data=\$\{SAVED_SCHEDULE_VERSION\}`\)/);
   assert.match(page, /programmeCache/);
-  assert.doesNotMatch(page, /fetch\("\/pathe-schedule\.json"\)\s*\.then/);
+  assert.doesNotMatch(page, /fetch\(`\/pathe-schedule\.json\?data=\$\{SAVED_SCHEDULE_VERSION\}`\)\s*\.then/);
   assert.match(route, /showtimes\/\$\{encodeURIComponent\(cinemaSlug\)\}\/\$\{date\}/);
   assert.match(route, /getSupportedCinemas\(\)/);
   assert.doesNotMatch(api, /pendingRequests/);
@@ -75,6 +79,9 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(cinemas, /isSupportedCinema/);
   assert.match(syncScript, /cinema-pathe-grand-quevilly/);
   assert.match(syncScript, /cinema-pathe-odysseum/);
+  assert.equal(savedOdysseum?.name, "Pathé Odysseum");
+  assert.equal(savedOdysseum?.district, "34000");
+  assert.ok(Object.values(savedOdysseum?.days ?? {}).some((films) => films.length > 0));
   assert.match(page, /Paris, au Grand-Quevilly ou à Montpellier/);
   assert.match(cinemas, /compareCinemaRank/);
   assert.match(api, /!isExcludedCinema\(cinema\.slug\)/);
@@ -90,7 +97,7 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(page, /<option value="france">France<\/option>/);
   assert.match(page, /<option value="outside-france">Hors France<\/option>/);
   assert.match(page, /upcomingNationality === "outside-france" && movie\.nationality !== "France"/);
-  assert.match(page, /UPCOMING_DATA_VERSION = "tmdb-odysseum-v4"/);
+  assert.match(page, /UPCOMING_DATA_VERSION = "tmdb-odysseum-v5"/);
   assert.match(page, /fetch\(`\/api\/pathe\/upcoming\?data=\$\{UPCOMING_DATA_VERSION\}`\)/);
   assert.match(page, /type="date" value=\{upcomingStartDate\}/);
   assert.match(page, /type="date" value=\{upcomingEndDate\}/);
