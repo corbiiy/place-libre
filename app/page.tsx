@@ -97,6 +97,33 @@ const nextCalendarDate = (date: string) => {
   value.setUTCDate(value.getUTCDate() + 1);
   return value.toISOString().slice(0, 10);
 };
+const addCalendarDays = (date: string, days: number) => {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+};
+const addCalendarMonths = (date: string, months: number) => {
+  const [year, month, day] = date.split("-").map(Number);
+  const value = new Date(Date.UTC(year, month - 1 + months, 1, 12));
+  const lastDay = new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 0, 12)).getUTCDate();
+  value.setUTCDate(Math.min(day, lastDay));
+  return value.toISOString().slice(0, 10);
+};
+const clampCalendarDate = (date: string, minimum?: string, maximum?: string) => {
+  if (minimum && date < minimum) return minimum;
+  if (maximum && date > maximum) return maximum;
+  return date;
+};
+const upcomingCalendarRange = (dates: string[], duration: { days?: number; months?: number }) => {
+  const minimum = dates[0];
+  const maximum = dates.at(-1);
+  if (!minimum || !maximum) return { start: "", end: "" };
+  const start = clampCalendarDate(parisDateKey(), minimum, maximum);
+  const requestedEnd = duration.days
+    ? addCalendarDays(start, duration.days)
+    : addCalendarMonths(start, duration.months ?? 1);
+  return { start, end: clampCalendarDate(requestedEnd, start, maximum) };
+};
 const preferredScrollBehavior = (): ScrollBehavior => window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
 const normalizeSearch = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("fr").trim();
 const compareReleaseDate = (left: UpcomingMovie, right: UpcomingMovie) => {
@@ -349,6 +376,9 @@ export default function Home() {
   const upcomingMovie = visibleUpcomingMovies.find((movie) => movie.slug === upcomingMovieSlug) ?? null;
   const upcomingCinema = upcomingMovie?.cinemas.find((cinema) => cinema.slug === upcomingCinemaSlug) ?? null;
   const upcomingPlanCount = upcomingFilm?.sessions.filter((session) => session.status === "available" && session.bookingUrl).length ?? 0;
+  const nextWeekRange = upcomingCalendarRange(upcomingDates, { days: 7 });
+  const nextThreeMonthsRange = upcomingCalendarRange(upcomingDates, { months: 3 });
+  const nextSixMonthsRange = upcomingCalendarRange(upcomingDates, { months: 6 });
 
   async function refreshProgramme(slug: string, requestedDate?: string, initial = false) {
     const requestId = ++requestIdRef.current;
@@ -395,9 +425,9 @@ export default function Home() {
           const fallbackUpcoming = upcomingFromSchedule(filteredSchedule);
           setUpcomingMovies((current) => current.length ? current : fallbackUpcoming);
           const fallbackDates = [...new Set(fallbackUpcoming.flatMap((movie) => movie.cinemas.flatMap((venue) => venue.dates)))].sort();
-          const fallbackStart = fallbackDates[0] ?? "";
-          setUpcomingStartDate((current) => current || fallbackStart);
-          setUpcomingEndDate((current) => current || fallbackDates.filter((day) => day.startsWith(fallbackStart.slice(0, 7))).at(-1) || fallbackStart);
+          const fallbackRange = upcomingCalendarRange(fallbackDates, { months: 1 });
+          setUpcomingStartDate((current) => current || fallbackRange.start);
+          setUpcomingEndDate((current) => current || fallbackRange.end);
           setRefreshError(true);
         } catch {
           setLoadError(true);
@@ -415,9 +445,9 @@ export default function Home() {
     setUpcomingMovies(filteredMovies);
     setTmdbAvailable(hasTmdb);
     const dates = [...new Set(filteredMovies.flatMap((movie) => movie.cinemas.flatMap((venue) => venue.dates)))].sort();
-    const firstDate = dates[0] ?? "";
-    setUpcomingStartDate((current) => current || firstDate);
-    setUpcomingEndDate((current) => current || dates.filter((day) => day.startsWith(firstDate.slice(0, 7))).at(-1) || firstDate);
+    const initialRange = upcomingCalendarRange(dates, { months: 1 });
+    setUpcomingStartDate((current) => current || initialRange.start);
+    setUpcomingEndDate((current) => current || initialRange.end);
   }
 
   async function loadUpcomingCatalogue() {
@@ -567,6 +597,13 @@ export default function Home() {
   function changeUpcomingEndDate(nextDate: string) {
     setUpcomingEndDate(nextDate);
     if (upcomingStartDate && nextDate < upcomingStartDate) setUpcomingStartDate(nextDate);
+    resetUpcomingSelection();
+  }
+
+  function applyUpcomingRange(range: { start: string; end: string }) {
+    if (!range.start || !range.end) return;
+    setUpcomingStartDate(range.start);
+    setUpcomingEndDate(range.end);
     resetUpcomingSelection();
   }
 
@@ -826,6 +863,11 @@ export default function Home() {
                 <span>Jusqu’au</span>
                 <input type="date" value={upcomingEndDate} min={upcomingDates[0]} max={upcomingDates.at(-1)} onChange={(event) => changeUpcomingEndDate(event.target.value)} disabled={!upcomingDates.length} />
               </label>
+            </div>
+            <div className="range-presets" role="group" aria-label="Périodes rapides">
+              <button type="button" onClick={() => applyUpcomingRange(nextWeekRange)} aria-pressed={upcomingStartDate === nextWeekRange.start && upcomingEndDate === nextWeekRange.end} disabled={!upcomingDates.length}>Semaine prochaine</button>
+              <button type="button" onClick={() => applyUpcomingRange(nextThreeMonthsRange)} aria-pressed={upcomingStartDate === nextThreeMonthsRange.start && upcomingEndDate === nextThreeMonthsRange.end} disabled={!upcomingDates.length}>Prochains 3 mois</button>
+              <button type="button" onClick={() => applyUpcomingRange(nextSixMonthsRange)} aria-pressed={upcomingStartDate === nextSixMonthsRange.start && upcomingEndDate === nextSixMonthsRange.end} disabled={!upcomingDates.length}>Prochains 6 mois</button>
             </div>
           </div>
         </div>

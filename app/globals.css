@@ -143,6 +143,12 @@ button:not(:disabled):active, .source-link:active { transform: scale(.985); }
 .date-range label:first-child { border-right: 1px solid var(--line); }
 .date-range-arrow { min-width: 34px; display: grid; place-items: center; border-right: 1px solid var(--line); color: var(--muted); font-size: 10px; font-weight: 850; text-transform: uppercase; }
 .date-range input { color-scheme: light; }
+.range-presets { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); }
+.range-presets button { min-height: 50px; padding: 10px 12px; border: 0; border-right: 1px solid var(--line); background: #f0ece2; color: var(--ink); cursor: pointer; font-size: 11px; font-weight: 850; }
+.range-presets button:last-child { border-right: 0; }
+.range-presets button:hover { background: #fffbd7; }
+.range-presets button[aria-pressed="true"] { background: var(--yellow); }
+.range-presets button:disabled { cursor: wait; color: #8d887e; }
 .source-status { margin: 24px 0 0; font-size: 11px; }
 .upcoming-count { margin: 30px 0 14px; color: #615d55; font-size: 12px; font-weight: 750; }
 .upcoming-skeleton > div { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -264,6 +270,7 @@ button:not(:disabled):active, .source-link:active { transform: scale(.985); }
   .upcoming-controls > label, .date-range label { min-height: 58px; padding: 10px 11px; }
   .upcoming-controls select, .upcoming-controls input { font-size: 13px; }
   .date-range-arrow { min-width: 28px; }
+  .range-presets button { min-height: 52px; padding: 9px 6px; font-size: 10px; line-height: 1.2; }
   .upcoming-skeleton > div { grid-template-columns: 1fr; }
   .upcoming-skeleton i { min-height: 118px; }
   .upcoming-count { margin-top: 24px; }

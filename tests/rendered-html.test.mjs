@@ -101,6 +101,13 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(page, /fetch\(`\/api\/pathe\/upcoming\?data=\$\{UPCOMING_DATA_VERSION\}`\)/);
   assert.match(page, /type="date" value=\{upcomingStartDate\}/);
   assert.match(page, /type="date" value=\{upcomingEndDate\}/);
+  assert.match(page, /upcomingCalendarRange\(dates, \{ months: 1 \}\)/);
+  assert.match(page, /Semaine prochaine/);
+  assert.match(page, /Prochains 3 mois/);
+  assert.match(page, /Prochains 6 mois/);
+  assert.match(page, /upcomingCalendarRange\(upcomingDates, \{ days: 7 \}\)/);
+  assert.match(page, /upcomingCalendarRange\(upcomingDates, \{ months: 3 \}\)/);
+  assert.match(page, /upcomingCalendarRange\(upcomingDates, \{ months: 6 \}\)/);
   assert.match(page, /day >= upcomingStartDate/);
   assert.match(page, /day <= upcomingEndDate/);
   assert.match(page, /visibleUpcomingMovies\.find\(\(movie\) => movie\.slug === upcomingMovieSlug\)/);
