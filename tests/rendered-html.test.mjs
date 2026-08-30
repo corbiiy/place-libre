@@ -29,7 +29,7 @@ test("server-renders the Place Libre loading state", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>Place Libre — vérifiez les places de cinéma<\/title>/i);
+  assert.match(html, /<title>Place Libre : vérifiez les places de cinéma<\/title>/i);
   assert.match(html, /Le bon film\./);
   assert.match(html, /Chargement du programme Pathé/);
   assert.match(html, /Programme officiel/);
@@ -116,7 +116,7 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(tmdb, /https:\/\/api\.themoviedb\.org\/3\/search\/movie/);
   assert.match(tmdb, /TMDB_API_READ_TOKEN/);
   assert.match(tmdb, /original_language/);
-  assert.match(page, /Langue originale · TMDB/);
+  assert.match(page, /Langue originale \(TMDB\)/);
   assert.match(page, /movie\.originalLanguage === upcomingLanguage/);
   assert.match(page, /defaultCinema\?\.dates\.length === 1 \? defaultCinema\.dates\[0\] : null/);
   assert.match(page, /selectedCinema\?\.dates\.length === 1 \? selectedCinema\.dates\[0\] : null/);
@@ -134,12 +134,22 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(page, /Recharger le plan/);
   assert.match(page, /reloadedSeatMapUrl/);
   assert.match(page, /onLoad=\{\(\) => setSeatMapReady\(true\)\}/);
-  assert.match(page, /Capacité \{session\.capacity\}/);
+  assert.match(page, /\{session\.capacity\} places/);
   assert.doesNotMatch(page, /<span>01<\/span>\s*Programme officiel/);
   assert.doesNotMatch(page, /<span>03<\/span>\s*Films à venir/);
   assert.match(page, /Version française/);
   assert.match(styles, /linear-gradient\(90deg, #0055a4/);
   assert.match(styles, /#ef4135/);
   assert.match(page, /Voir le plan officiel/);
+  assert.match(page, /function SessionResult/);
+  assert.match(page, /Plan disponible/);
+  assert.match(page, /id="upcoming-detail"/);
+  assert.match(page, /Choisissez d’abord le film/);
+  assert.match(page, /className="finder-skeleton"/);
+  assert.match(page, /className="upcoming-skeleton"/);
+  assert.doesNotMatch(page, /step-number|upcoming-step|Fermer ×/);
+  assert.match(styles, /\.upcoming-intro h1/);
+  assert.match(styles, /min-height: calc\(100dvh - 72px\)/);
+  assert.match(styles, /@media \(max-width: 560px\)/);
   assert.doesNotMatch(page, /ExactSeatAnalysis|placelibrehelper|analyse exacte|helper Safari/i);
 });

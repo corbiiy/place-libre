@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { headers } from "next/headers";
 import "./globals.css";
+
+const siteUrl = "https://place-libre-pathe-seats.cdilyas.chatgpt.site";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,23 +14,22 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export async function generateMetadata(): Promise<Metadata> {
-  const requestHeaders = await headers();
-  const host = requestHeaders.get("host") ?? "localhost:3000";
-  const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  const socialImage = `${protocol}://${host}/og.png`;
-
-  return {
-    title: "Place Libre — vérifiez les places de cinéma",
-    description: "Choisissez un cinéma Pathé, un film et une date pour repérer les séances et les meilleurs sièges disponibles.",
-    openGraph: {
-      title: "Place Libre",
-      description: "Le bon film. La bonne place.",
-      images: [{ url: socialImage, width: 1733, height: 907, alt: "Place Libre — aperçu des sièges disponibles" }],
-    },
-    twitter: { card: "summary_large_image", title: "Place Libre", description: "Le bon film. La bonne place.", images: [socialImage] },
-  };
-}
+export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
+  title: "Place Libre : vérifiez les places de cinéma",
+  description: "Choisissez un cinéma Pathé, une date et un film pour consulter les séances et ouvrir le plan officiel.",
+  alternates: { canonical: "/" },
+  openGraph: {
+    title: "Place Libre",
+    description: "Le bon film. La bonne place.",
+    url: siteUrl,
+    siteName: "Place Libre",
+    locale: "fr_FR",
+    type: "website",
+    images: [{ url: "/og.png", width: 1731, height: 909, alt: "Place Libre, aperçu des sièges disponibles" }],
+  },
+  twitter: { card: "summary_large_image", title: "Place Libre", description: "Le bon film. La bonne place.", images: ["/og.png"] },
+};
 
 export default function RootLayout({
   children,
