@@ -696,7 +696,7 @@ export default function Home() {
   return (
     <main>
       <header className="topbar">
-        <a className="brand" href="#top" onClick={() => changePage("programme")} aria-label="Place Libre - accueil"><span className="brand-mark">PL</span><span>PLACE LIBRE</span></a>
+        <a className="brand" href="#top" onClick={() => changePage("programme")} aria-label="Place Libre - accueil"><Image className="brand-mark" src="/favicon.svg" alt="" width={40} height={40} priority /><span>PLACE LIBRE</span></a>
         <div className="topbar-actions">
           <nav className="page-switcher" aria-label="Pages de Place Libre">
             <button className={activePage === "programme" ? "active" : ""} onClick={() => changePage("programme")} aria-pressed={activePage === "programme"}>Programme officiel</button>

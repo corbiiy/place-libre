@@ -19,6 +19,10 @@ export const metadata: Metadata = {
   title: "Place Libre : vérifiez les places de cinéma",
   description: "Choisissez un cinéma Pathé, une date et un film pour consulter les séances et ouvrir le plan officiel.",
   alternates: { canonical: "/" },
+  icons: {
+    icon: [{ url: "/favicon.svg?v=2", type: "image/svg+xml" }],
+    shortcut: "/favicon.svg?v=2",
+  },
   openGraph: {
     title: "Place Libre",
     description: "Le bon film. La bonne place.",

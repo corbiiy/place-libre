@@ -35,10 +35,11 @@ test("server-renders the Place Libre loading state", async () => {
   assert.match(html, /Programme officiel/);
   assert.match(html, /Films à venir/);
   assert.match(html, /données Pathé/);
+  assert.match(html, /href="\/favicon\.svg\?v=2"/);
 });
 
 test("uses live date-specific Pathé data with a saved fallback", async () => {
-  const [page, styles, route, upcomingRoute, api, cinemas, tmdb, syncScript, savedScheduleJson] = await Promise.all([
+  const [page, styles, route, upcomingRoute, api, cinemas, tmdb, syncScript, savedScheduleJson, favicon] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pathe/route.ts", import.meta.url), "utf8"),
@@ -48,6 +49,7 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
     readFile(new URL("../lib/tmdb.ts", import.meta.url), "utf8"),
     readFile(new URL("../scripts/sync-pathe.mjs", import.meta.url), "utf8"),
     readFile(new URL("../public/pathe-schedule.json", import.meta.url), "utf8"),
+    readFile(new URL("../public/favicon.svg", import.meta.url), "utf8"),
   ]);
   const savedSchedule = JSON.parse(savedScheduleJson);
   const savedOdysseum = savedSchedule.cinemas.find((cinema) => cinema.slug === "cinema-pathe-odysseum");
@@ -83,6 +85,9 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.equal(savedOdysseum?.district, "34000");
   assert.ok(Object.values(savedOdysseum?.days ?? {}).some((films) => films.length > 0));
   assert.match(page, /Paris, au Grand-Quevilly ou à Montpellier/);
+  assert.match(page, /className="brand-mark" src="\/favicon\.svg" alt=""/);
+  assert.match(favicon, /#FFE600/);
+  assert.match(favicon, /#171714/);
   assert.match(cinemas, /compareCinemaRank/);
   assert.match(api, /!isExcludedCinema\(cinema\.slug\)/);
   assert.match(api, /\.sort\(compareCinemaRank\)/);
