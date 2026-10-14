@@ -1,5 +1,3 @@
-import { env } from "cloudflare:workers";
-
 type TmdbSearchResult = {
   id: number;
   title: string;
@@ -20,7 +18,7 @@ export type TmdbMatch = {
 
 const matchCache = new Map<string, { expiresAt: number; value: TmdbMatch | null }>();
 
-const tmdbToken = () => (env as unknown as { TMDB_API_READ_TOKEN?: string }).TMDB_API_READ_TOKEN?.trim() ?? "";
+const tmdbToken = () => process.env.TMDB_API_READ_TOKEN?.trim() ?? "";
 
 const normalizeTitle = (value: string) => value
   .normalize("NFD")

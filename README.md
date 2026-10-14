@@ -1,100 +1,43 @@
-# vinext-starter
+# Place Libre
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+Pick a Pathé cinema, a date and a film, then open Pathé's official seat map.
+Live at **https://corbiiy.github.io/place-libre/**.
 
-## Prerequisites
+## How it is hosted
 
-- Node.js `>=22.13.0`
+GitHub Pages only serves static files, and Pathé's API refuses calls from other
+websites, so the programme is fetched ahead of time:
 
-## Quick Start
+1. `.github/workflows/pages.yml` runs on every push to `main`, every 30 minutes,
+   and on demand (Actions → Deploy to GitHub Pages → Run workflow).
+2. `npm run sync:pathe` (`scripts/sync-pathe.ts`) reads the Pathé API and writes
+   `public/data/schedule.json` and `public/data/upcoming.json`.
+3. `npm run build:pages` exports the site to `out/`, which is deployed to Pages.
+
+If Pathé can't be reached, the run fails and the previous deployment stays online.
+The page shows when the data was last synced. Seat maps always load live from Pathé.
+
+GitHub pauses scheduled workflows after 60 days without a commit; re-enable it from
+the Actions tab if that happens.
+
+## TMDB (optional)
+
+The original-language filter uses TMDB. Add a `TMDB_API_READ_TOKEN` repository
+secret (Settings → Secrets and variables → Actions); without it the filter is
+disabled. Locally the sync script reads the token from `.dev.vars`.
+
+## Local development
+
+Requires Node.js 22.18 or newer.
 
 ```bash
 npm install
+npm run sync:pathe
 npm run dev
-npm run build
 ```
 
-This starter does not use `wrangler.jsonc`.
+- `npm run build:pages`: production export to `out/` (assets under `/place-libre`)
+- `npm test`: build, then check the exported page and data wiring
+- `npm run lint`: ESLint
 
-## Included Shape
-
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
-
-The user ID is stable for the same user on the same Site and different across Sites. Email and name are intended for display or contact purposes.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
-```
-
-## Optional Dispatch-Owned ChatGPT Sign-In
-
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
-
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+Built with [vinext](https://github.com/cloudflare/vinext).

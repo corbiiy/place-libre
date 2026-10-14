@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { compareCinemaRank, DEFAULT_CINEMA_SLUG, isExcludedCinema } from "../lib/cinemas";
+import { BASE_PATH } from "../lib/site";
 
 type Session = {
   time: string;
@@ -190,9 +191,9 @@ function SessionResult({
     </article>
   );
 }
-const programmeCache = new Map<string, { expiresAt: number; data: LiveProgramme }>();
-const SAVED_SCHEDULE_VERSION = "odysseum-2026-08-27-v1";
-const UPCOMING_DATA_VERSION = "tmdb-odysseum-v5";
+// Static files written by scripts/sync-pathe.ts, refreshed by the GitHub Pages deploy workflow.
+const dataUrl = (file: string) => `${BASE_PATH}/data/${file}`;
+let scheduleCache: { expiresAt: number; data: Promise<Schedule> } | null = null;
 const SEATING_POSITION = "c2VhdGluZw==";
 
 const bookingSeatUrl = (rawUrl: string) => {
@@ -226,22 +227,33 @@ const filterUpcomingCinemas = (movies: UpcomingMovie[]) => movies
   .map((movie) => ({ ...movie, cinemas: movie.cinemas.filter((cinema) => !isExcludedCinema(cinema.slug)).sort(compareCinemaRank) }))
   .filter((movie) => movie.cinemas.length > 0);
 
-async function loadProgramme(slug: string, requestedDate?: string) {
-  const key = `${slug}:${requestedDate ?? "default"}`;
-  const cached = programmeCache.get(key);
-  if (cached && cached.expiresAt > Date.now()) return cached.data;
-
-  const params = new URLSearchParams({ cinema: slug });
-  if (requestedDate) params.set("date", requestedDate);
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 15_000);
-  const response = await fetch(`/api/pathe?${params}`, { signal: controller.signal }).finally(() => window.clearTimeout(timeout));
-  if (!response.ok) throw new Error("Programme indisponible");
-  const data: LiveProgramme = await response.json();
-  const cachedProgramme = { expiresAt: Date.now() + 60_000, data };
-  programmeCache.set(key, cachedProgramme);
-  programmeCache.set(`${slug}:${data.date}`, cachedProgramme);
+function loadSchedule() {
+  if (scheduleCache && scheduleCache.expiresAt > Date.now()) return scheduleCache.data;
+  const data = fetch(dataUrl("schedule.json"), { cache: "no-cache" }).then((response) => {
+    if (!response.ok) throw new Error("Programme indisponible");
+    return response.json() as Promise<Schedule>;
+  });
+  const entry = { expiresAt: Date.now() + 60_000, data };
+  scheduleCache = entry;
+  data.catch(() => {
+    if (scheduleCache === entry) scheduleCache = null;
+  });
   return data;
+}
+
+async function loadProgramme(slug: string, requestedDate?: string): Promise<LiveProgramme> {
+  const schedule = await loadSchedule();
+  const cinema = schedule.cinemas.find((item) => item.slug === slug);
+  if (!cinema) throw new Error("Programme indisponible");
+  const dates = Object.keys(cinema.days).filter((day) => day >= parisDateKey()).sort();
+  const date = requestedDate && dates.includes(requestedDate) ? requestedDate : dates[0] ?? "";
+  return {
+    syncedAt: schedule.syncedAt,
+    dates,
+    date,
+    films: cinema.days[date] ?? [],
+    cinemas: schedule.cinemas.map((item) => ({ slug: item.slug, name: item.name, district: item.district, pageUrl: item.pageUrl })),
+  };
 }
 
 function upcomingFromSchedule(schedule: Schedule): UpcomingMovie[] {
@@ -404,37 +416,8 @@ export default function Home() {
       updateSeatMap(null);
     } catch {
       if (requestId !== requestIdRef.current) return;
-      if (initial) {
-        try {
-          const response = await fetch(`/pathe-schedule.json?data=${SAVED_SCHEDULE_VERSION}`);
-          if (!response.ok) throw new Error("Programme indisponible");
-          const data: Schedule = await response.json();
-          const filteredSchedule = { ...data, cinemas: data.cinemas.filter((cinema) => !isExcludedCinema(cinema.slug)).sort(compareCinemaRank) };
-          const fallbackCinema = filteredSchedule.cinemas.find((item) => item.slug === slug) ?? filteredSchedule.cinemas[0];
-          const fallbackDate = requestedDate && fallbackCinema.days[requestedDate]
-            ? requestedDate
-            : data.dates.find((day) => day >= parisDateKey() && fallbackCinema.days[day]) ?? data.dates[0];
-          const fallbackFilms = fallbackCinema.days[fallbackDate] ?? [];
-          setSchedule(filteredSchedule);
-          setCinemaSlug(fallbackCinema.slug);
-          setDate(fallbackDate);
-          setProgrammeDates(data.dates);
-          setDayFilms(fallbackFilms);
-          setSyncedAt(data.syncedAt);
-          setFilmSlug(filterFilms(fallbackFilms, vostOnlyRef.current)[0]?.slug ?? "");
-          const fallbackUpcoming = upcomingFromSchedule(filteredSchedule);
-          setUpcomingMovies((current) => current.length ? current : fallbackUpcoming);
-          const fallbackDates = [...new Set(fallbackUpcoming.flatMap((movie) => movie.cinemas.flatMap((venue) => venue.dates)))].sort();
-          const fallbackRange = upcomingCalendarRange(fallbackDates, { months: 1 });
-          setUpcomingStartDate((current) => current || fallbackRange.start);
-          setUpcomingEndDate((current) => current || fallbackRange.end);
-          setRefreshError(true);
-        } catch {
-          setLoadError(true);
-        }
-      } else {
-        setRefreshError(true);
-      }
+      if (initial) setLoadError(true);
+      else setRefreshError(true);
     } finally {
       if (requestId === requestIdRef.current) setRefreshing(false);
     }
@@ -456,17 +439,14 @@ export default function Home() {
     setUpcomingLoading(true);
     setUpcomingError(false);
     try {
-      const response = await fetch(`/api/pathe/upcoming?data=${UPCOMING_DATA_VERSION}`);
+      const response = await fetch(dataUrl("upcoming.json"), { cache: "no-cache" });
       if (!response.ok) throw new Error("Films à venir indisponibles");
       const data: { movies: UpcomingMovie[]; sources?: { pathe?: boolean; tmdb?: boolean } } = await response.json();
       applyUpcomingCatalogue(data.movies, Boolean(data.sources?.tmdb));
       setUpcomingError(data.sources?.pathe === false);
     } catch {
       try {
-        const response = await fetch(`/pathe-schedule.json?data=${SAVED_SCHEDULE_VERSION}`);
-        if (!response.ok) throw new Error("Programme enregistré indisponible");
-        const data: Schedule = await response.json();
-        applyUpcomingCatalogue(upcomingFromSchedule(data), false);
+        applyUpcomingCatalogue(upcomingFromSchedule(await loadSchedule()), false);
       } catch {
         setUpcomingMovies([]);
       }
@@ -696,7 +676,7 @@ export default function Home() {
   return (
     <main>
       <header className="topbar">
-        <a className="brand" href="#top" onClick={() => changePage("programme")} aria-label="Place Libre - accueil"><Image className="brand-mark" src="/favicon.svg" alt="" width={40} height={40} priority /><span>PLACE LIBRE</span></a>
+        <a className="brand" href="#top" onClick={() => changePage("programme")} aria-label="Place Libre - accueil"><Image className="brand-mark" src={`${BASE_PATH}/favicon.svg`} alt="" width={40} height={40} priority /><span>PLACE LIBRE</span></a>
         <div className="topbar-actions">
           <nav className="page-switcher" aria-label="Pages de Place Libre">
             <button className={activePage === "programme" ? "active" : ""} onClick={() => changePage("programme")} aria-pressed={activePage === "programme"}>Programme officiel</button>

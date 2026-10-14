@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-
-const siteUrl = "https://place-libre-pathe-seats.cdilyas.chatgpt.site";
+import { BASE_PATH, SITE_URL } from "../lib/site";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,18 +14,18 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
+  metadataBase: new URL(SITE_URL),
   title: "Place Libre : vérifiez les places de cinéma",
   description: "Choisissez un cinéma Pathé, une date et un film pour consulter les séances et ouvrir le plan officiel.",
   alternates: { canonical: "/" },
   icons: {
-    icon: [{ url: "/favicon.svg?v=2", type: "image/svg+xml" }],
-    shortcut: "/favicon.svg?v=2",
+    icon: [{ url: `${BASE_PATH}/favicon.svg?v=2`, type: "image/svg+xml" }],
+    shortcut: `${BASE_PATH}/favicon.svg?v=2`,
   },
   openGraph: {
     title: "Place Libre",
     description: "Le bon film. La bonne place.",
-    url: siteUrl,
+    url: SITE_URL,
     siteName: "Place Libre",
     locale: "fr_FR",
     type: "website",

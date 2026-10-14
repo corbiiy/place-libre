@@ -2,75 +2,46 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request("http://localhost/", {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
-}
-
-test("server-renders the Place Libre loading state", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-
-  const html = await response.text();
+test("exports the Place Libre loading state for GitHub Pages", async () => {
+  const html = await readFile(new URL("../dist/client/index.html", import.meta.url), "utf8");
   assert.match(html, /<title>Place Libre : vérifiez les places de cinéma<\/title>/i);
   assert.match(html, /Le bon film\./);
   assert.match(html, /Chargement du programme Pathé/);
   assert.match(html, /Programme officiel/);
   assert.match(html, /Films à venir/);
   assert.match(html, /données Pathé/);
-  assert.match(html, /href="\/favicon\.svg\?v=2"/);
+  assert.match(html, /href="\/place-libre\/favicon\.svg\?v=2"/);
+  assert.match(html, /src="\/place-libre\/_next\/static\/chunks\//);
+  assert.match(html, /content="https:\/\/corbiiy\.github\.io\/place-libre\/og\.png"/);
 });
 
-test("uses live date-specific Pathé data with a saved fallback", async () => {
-  const [page, styles, route, upcomingRoute, api, cinemas, tmdb, syncScript, savedScheduleJson, favicon] = await Promise.all([
+test("reads the static Pathé data written by the sync script", async () => {
+  const [page, styles, cinemas, tmdb, site, syncScript, favicon] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/pathe/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/pathe/upcoming/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/pathe/pathe-api.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/cinemas.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/tmdb.ts", import.meta.url), "utf8"),
-    readFile(new URL("../scripts/sync-pathe.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../public/pathe-schedule.json", import.meta.url), "utf8"),
+    readFile(new URL("../lib/site.ts", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/sync-pathe.ts", import.meta.url), "utf8"),
     readFile(new URL("../public/favicon.svg", import.meta.url), "utf8"),
   ]);
-  const savedSchedule = JSON.parse(savedScheduleJson);
-  const savedOdysseum = savedSchedule.cinemas.find((cinema) => cinema.slug === "cinema-pathe-odysseum");
 
-  assert.match(page, /fetch\(`\/api\/pathe\?\$\{params\}`, \{ signal: controller\.signal \}\)/);
-  assert.match(page, /controller\.abort\(\), 15_000/);
-  assert.match(page, /SAVED_SCHEDULE_VERSION = "odysseum-2026-08-27-v1"/);
-  assert.match(page, /fetch\(`\/pathe-schedule\.json\?data=\$\{SAVED_SCHEDULE_VERSION\}`\)/);
-  assert.match(page, /programmeCache/);
-  assert.doesNotMatch(page, /fetch\(`\/pathe-schedule\.json\?data=\$\{SAVED_SCHEDULE_VERSION\}`\)\s*\.then/);
-  assert.match(route, /showtimes\/\$\{encodeURIComponent\(cinemaSlug\)\}\/\$\{date\}/);
-  assert.match(route, /getSupportedCinemas\(\)/);
-  assert.doesNotMatch(api, /pendingRequests/);
-  assert.match(api, /responseCache/);
-  assert.doesNotMatch(tmdb, /Map<string, Promise/);
-  assert.match(upcomingRoute, /return mapWithConcurrency\(movies, 4/);
+  assert.match(site, /BASE_PATH = process\.env\.NODE_ENV === "production" \? "\/place-libre" : ""/);
+  assert.match(page, /const dataUrl = \(file: string\) => `\$\{BASE_PATH\}\/data\/\$\{file\}`/);
+  assert.match(page, /fetch\(dataUrl\("schedule\.json"\), \{ cache: "no-cache" \}\)/);
+  assert.match(page, /fetch\(dataUrl\("upcoming\.json"\), \{ cache: "no-cache" \}\)/);
+  assert.match(page, /upcomingFromSchedule\(await loadSchedule\(\)\)/);
+  assert.match(page, /scheduleCache/);
+  assert.doesNotMatch(page, /\/api\/pathe|pathe-schedule\.json/);
+  assert.match(syncScript, /new URL\("\.\.\/public\/data\/", import\.meta\.url\)/);
+  assert.match(syncScript, /showtimes\/\$\{encodeURIComponent\(cinemaSlug\)\}\/\$\{date\}/);
+  assert.match(syncScript, /isSupportedCinema\(cinema\.slug, theater\.addressCity\)/);
+  assert.doesNotMatch(tmdb, /Map<string, Promise|cloudflare:workers/);
   assert.match(page, /Rechercher un film/);
   assert.match(page, /releaseDateLabel/);
   assert.match(page, /left\.releaseDate\.localeCompare\(right\.releaseDate\)/);
   assert.match(page, /normalizedMovieSearch \? movies\.sort\(compareReleaseDate\) : movies/);
-  assert.match(route, /releaseDate: show\.releaseAt\?\.FR_FR/);
+  assert.match(syncScript, /releaseDate: show\.releaseAt\?\.FR_FR/);
   assert.match(cinemas, /cinema-pathe-aquaboulevard/);
   assert.match(cinemas, /cinema-la-geode/);
   assert.match(cinemas, /cinema-pathe-montparnos/);
@@ -79,18 +50,13 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(cinemas, /cinema-pathe-grand-quevilly/);
   assert.match(cinemas, /cinema-pathe-odysseum/);
   assert.match(cinemas, /isSupportedCinema/);
-  assert.match(syncScript, /cinema-pathe-grand-quevilly/);
-  assert.match(syncScript, /cinema-pathe-odysseum/);
-  assert.equal(savedOdysseum?.name, "Pathé Odysseum");
-  assert.equal(savedOdysseum?.district, "34000");
-  assert.ok(Object.values(savedOdysseum?.days ?? {}).some((films) => films.length > 0));
   assert.match(page, /Paris, au Grand-Quevilly ou à Montpellier/);
-  assert.match(page, /className="brand-mark" src="\/favicon\.svg" alt=""/);
+  assert.match(page, /className="brand-mark" src=\{`\$\{BASE_PATH\}\/favicon\.svg`\} alt=""/);
   assert.match(favicon, /#FFE600/);
   assert.match(favicon, /#171714/);
   assert.match(cinemas, /compareCinemaRank/);
-  assert.match(api, /!isExcludedCinema\(cinema\.slug\)/);
-  assert.match(api, /\.sort\(compareCinemaRank\)/);
+  assert.match(syncScript, /!isExcludedCinema\(cinema\.slug\)/);
+  assert.match(syncScript, /\.sort\(compareCinemaRank\)/);
   assert.match(page, /selectedMovie\?\.cinemas\.find\(\(cinema\) => cinema\.slug === DEFAULT_CINEMA_SLUG\)/);
   assert.match(page, /setUpcomingCinemaSlug\(defaultCinema\?\.slug \?\? ""\)/);
   assert.match(page, /<span>Cinéma<\/span>/);
@@ -102,8 +68,6 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(page, /<option value="france">France<\/option>/);
   assert.match(page, /<option value="outside-france">Hors France<\/option>/);
   assert.match(page, /upcomingNationality === "outside-france" && movie\.nationality !== "France"/);
-  assert.match(page, /UPCOMING_DATA_VERSION = "tmdb-odysseum-v5"/);
-  assert.match(page, /fetch\(`\/api\/pathe\/upcoming\?data=\$\{UPCOMING_DATA_VERSION\}`\)/);
   assert.match(page, /type="date" value=\{upcomingStartDate\}/);
   assert.match(page, /type="date" value=\{upcomingEndDate\}/);
   assert.match(page, /upcomingCalendarRange\(dates, \{ months: 1 \}\)/);
@@ -116,14 +80,11 @@ test("uses live date-specific Pathé data with a saved fallback", async () => {
   assert.match(page, /day >= upcomingStartDate/);
   assert.match(page, /day <= upcomingEndDate/);
   assert.match(page, /visibleUpcomingMovies\.find\(\(movie\) => movie\.slug === upcomingMovieSlug\)/);
-  assert.match(upcomingRoute, /`\/show\/\$\{encodeURIComponent\(movie\.slug\)\}`/);
-  assert.match(upcomingRoute, /detail\?\.nationality \?\? detail\?\.nationalityTracking/);
-  assert.match(upcomingRoute, /matchTmdbMovie\(movie\.title, movie\.releaseDate\)/);
-  assert.match(upcomingRoute, /sources: \{ pathe: true, tmdb: isTmdbConfigured\(\) \}/);
-  assert.match(upcomingRoute, /upcomingFromSavedSchedule\(savedSchedule as SavedSchedule\)/);
-  assert.match(upcomingRoute, /sources: \{ pathe: false, tmdb: isTmdbConfigured\(\) \}/);
-  assert.match(upcomingRoute, /max-age=60, s-maxage=60, stale-while-revalidate=300/);
-  assert.match(upcomingRoute, /releaseDate: movie\.releaseDate \?\? tmdbMatch\?\.releaseDate \?\? null/);
+  assert.match(syncScript, /`\/show\/\$\{encodeURIComponent\(movie\.slug\)\}`/);
+  assert.match(syncScript, /detail\?\.nationality \?\? detail\?\.nationalityTracking/);
+  assert.match(syncScript, /matchTmdbMovie\(movie\.title, movie\.releaseDate\)/);
+  assert.match(syncScript, /sources: \{ pathe: true, tmdb: isTmdbConfigured\(\) \}/);
+  assert.match(syncScript, /releaseDate: movie\.releaseDate \?\? tmdbMatch\?\.releaseDate \?\? null/);
   assert.match(page, /setUpcomingError\(data\.sources\?\.pathe === false\)/);
   assert.match(tmdb, /https:\/\/api\.themoviedb\.org\/3\/search\/movie/);
   assert.match(tmdb, /TMDB_API_READ_TOKEN/);
