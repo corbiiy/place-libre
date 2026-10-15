@@ -4,8 +4,9 @@ on:
   push:
     branches: [main]
   schedule:
-    # Refresh the Pathé programme every 30 minutes (GitHub can start scheduled runs late).
-    - cron: "*/30 * * * *"
+    # Refresh the Pathé programme every 30 minutes. Off the :00/:30 peak, when GitHub
+    # delays or drops scheduled runs (only 3 of ~30 ran overnight at */30).
+    - cron: "7,37 * * * *"
   workflow_dispatch:
 
 permissions:

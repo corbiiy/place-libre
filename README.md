@@ -8,7 +8,8 @@ Live at **https://corbiiy.github.io/place-libre/**.
 GitHub Pages only serves static files, and Pathé's API refuses calls from other
 websites, so the programme is fetched ahead of time:
 
-1. `.github/workflows/pages.yml` runs on every push to `main`, every 30 minutes,
+1. `.github/workflows/pages.yml` runs on every push to `main`, every 30 minutes
+   (at :07 and :37; GitHub may still delay or skip some scheduled runs),
    and on demand (Actions → Deploy to GitHub Pages → Run workflow).
 2. `npm run sync:pathe` (`scripts/sync-pathe.ts`) reads the Pathé API and writes
    `public/data/schedule.json` and `public/data/upcoming.json`.
